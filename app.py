@@ -14,7 +14,8 @@ st.set_page_config(page_title="Al Jazeera News Updates", page_icon="🌐", layou
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    # 🔴 এখানে মডেলের নাম পরিবর্তন করে সবচেয়ে স্থিতিশীল 'gemini-pro' দেওয়া হয়েছে
+    model = genai.GenerativeModel('gemini-pro')
     api_configured = True
 except KeyError:
     api_configured = False
@@ -49,7 +50,7 @@ html, body, h1, h2, h3, h4, h5, h6, p, button, a {{ font-family: 'Hind Siliguri'
 # --- ডাটাবেস সেটআপ ---
 @st.cache_resource
 def init_db():
-    conn = sqlite3.connect('news_db_gemini_v3.db', check_same_thread=False)
+    conn = sqlite3.connect('news_db_gemini_v4.db', check_same_thread=False)
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS news_table
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, link TEXT, translated_title TEXT, 
@@ -64,12 +65,12 @@ def auto_delete_old():
     c.execute("DELETE FROM news_table WHERE date < ?", (limit,))
     conn.commit()
 
-# --- AI অনুবাদ ফাংশন (আসল এরর শো করার ব্যবস্থা) ---
+# --- AI অনুবাদ ফাংশন ---
 def ai_translate(text, is_title=False):
     if not api_configured:
         return "API Key Error"
     
-    prompt = f"Translate the following English news text into simple, professional Bengali. Do not block any content, just translate it accurately.\n\nText:\n{text}"
+    prompt = f"Translate the following English news text into simple, professional, and easy-to-read Bengali. Do not block any content, just translate it accurately.\n\nText:\n{text}"
     
     safety_settings = [
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
@@ -82,11 +83,10 @@ def ai_translate(text, is_title=False):
         response = model.generate_content(prompt, safety_settings=safety_settings)
         return response.text.strip()
     except Exception as e:
-        # এখানে আসল এররটি রিটার্ন করা হচ্ছে যাতে স্ক্রিনে দেখা যায়
         print(f"API Error: {e}")
         return f"এপিআই এরর: {str(e)}"
 
-# --- স্ক্র্যাপিং লজিক (API লিমিট এড়াতে টাইম ডিলে যুক্ত) ---
+# --- স্ক্র্যাপিং লজিক ---
 def scrape_news():
     url = "https://www.aljazeera.com/" 
     headers = {'User-Agent': 'Mozilla/5.0'}
@@ -95,7 +95,7 @@ def scrape_news():
         response = requests.get(url, headers=headers, timeout=15)
         soup = BeautifulSoup(response.content, 'html.parser')
         
-        articles = [h for h in soup.find_all(['h3', 'h2']) if h.find('a')][:8] # লিমিট এড়াতে আপাতত ৮টি খবর নিচ্ছি
+        articles = [h for h in soup.find_all(['h3', 'h2']) if h.find('a')][:8]
         new_items = 0
         
         for article in articles:
@@ -119,13 +119,11 @@ def scrape_news():
                     if not full_eng_text:
                         continue
                     
-                    # 🔴 টাইটেল অনুবাদের পর ৩ সেকেন্ড বিরতি
                     bn_title = ai_translate(title, is_title=True)
-                    time.sleep(3) 
+                    time.sleep(2) 
                     
-                    # 🔴 বিস্তারিত অনুবাদের পর ৪ সেকেন্ড বিরতি (যাতে Quota Exceeded না হয়)
                     bn_full_text = ai_translate(full_eng_text)
-                    time.sleep(4)
+                    time.sleep(3)
                     
                     formatted_text = "".join([f"<p>{p.strip()}</p>" for p in bn_full_text.split('\n') if p.strip()])
                     
@@ -150,7 +148,7 @@ if 'selected_news' not in st.session_state: st.session_state.selected_news = Non
 
 if st.sidebar.button("🔄 Fetch Latest News (AI)"):
     if api_configured:
-        with st.spinner("Fetching and translating using AI... (it takes time due to API limits)"):
+        with st.spinner("খবর আনা হচ্ছে এবং অনুবাদ করা হচ্ছে... (এতে কিছুটা সময় লাগতে পারে)"):
             auto_delete_old() 
             success, msg = scrape_news()
             if success: st.sidebar.success(msg)
@@ -178,7 +176,7 @@ if st.session_state.view == 'home':
     all_news = c.fetchall()
 
     if not all_news:
-        st.info("No news available. Please click 'Fetch Latest News (AI)' from the sidebar to start.")
+        st.info("এখনো কোনো খবর নেই। বাম পাশ থেকে 'Fetch Latest News (AI)' বাটনে ক্লিক করুন।")
     else:
         items_per_page = 12
         total_pages = math.ceil(len(all_news) / items_per_page)
@@ -224,17 +222,4 @@ elif st.session_state.view == 'details':
     formatted_date = datetime.strptime(news[3], '%Y-%m-%d %H:%M:%S.%f').strftime('%B %d, %Y - %I:%M %p')
     img_html = f"""<div style="text-align: center; margin: 30px 0;"><img src="{news[1]}" style="max-width: 100%; width: 600px; height: auto; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.15);"></div>""" if news[1] else ""
     
-    article_html = f"""<div class="article-container">
-<h1 style='line-height: 1.4; color: {text_color}; text-align: center; margin-bottom: 15px; font-weight: 700;'>{news[0]}</h1>
-<p style='text-align: center; font-size: 15px; color: {meta_color};'>Category: <span class="category-badge" style="font-size: 15px;">{news[2]}</span> | Published: {formatted_date}</p>
-{img_html}
-<div class="article-text">
-{news[4]}
-</div>
-<hr style="border-top: 1px solid {meta_color}; opacity: 0.2; margin-top: 40px; margin-bottom: 20px;">
-<div style="text-align: center;">
-<a href="{news[5]}" target="_blank" style="color: {accent_color}; text-decoration: none; font-weight: 600; font-size: 16px;">🔗 Read the original article on Al Jazeera</a>
-</div>
-</div>"""
-    
-    st.markdown(article_html, unsafe_allow_html=True)
+    article
