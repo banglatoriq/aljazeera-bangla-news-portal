@@ -140,7 +140,7 @@ if st.sidebar.button("🔄 জোরপূর্বক খবর রিফ্র
         st.rerun()
 
 # --- হেডার ---
-st.markdown("<h1 style='text-align: center; color: #2e86c1;'>📰 Al Jajira</h1>", unsafe_allow_html=True)
+st.markdown("<h1 style='text-align: center; color: #2e86c1;'>📰 আল-জাজিরা বাংলা</h1>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; color: gray;'>নির্ভরযোগ্য আন্তর্জাতিক খবরের সরাসরি অনুবাদ</p>", unsafe_allow_html=True)
 st.write("---")
 
