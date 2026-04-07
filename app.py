@@ -3,12 +3,22 @@ import sqlite3
 from datetime import datetime, timedelta
 import requests
 from bs4 import BeautifulSoup
-from deep_translator import GoogleTranslator
+import google.generativeai as genai
 import math
 import time
 
 # --- পেইজ সেটআপ (Wide Layout) ---
 st.set_page_config(page_title="Al Jazeera News Updates", page_icon="🌐", layout="wide")
+
+# --- Gemini API Setup (Secure) ---
+try:
+    api_key = st.secrets["GEMINI_API_KEY"]
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel('gemini-1.5-flash')
+    api_configured = True
+except KeyError:
+    api_configured = False
+    st.error("Error: Gemini API Key not found in Streamlit Secrets. Please add it via Streamlit Cloud Settings.")
 
 # ==========================================
 # থিম এবং ফন্ট সেটআপ (Light / Dark Mode)
@@ -24,7 +34,7 @@ else:
     bg_color, text_color, card_bg, meta_color = "#F8FAFC", "#0F172A", "#FFFFFF", "#64748B"
     accent_color = "#0284C7"
 
-# সিএসএস (CSS)
+# সিএসএস (CSS) - হুবহু আগের ডিজাইন
 st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&display=swap');
@@ -72,10 +82,10 @@ html, body, h1, h2, h3, h4, h5, h6, p, button, a {{
 </style>
 """, unsafe_allow_html=True)
 
-# --- ডাটাবেস সেটআপ ---
+# --- ডাটাবেস সেটআপ (নতুন ডাটাবেস নাম ব্যবহার করা হলো যেন আগের ভাঙা অনুবাদ না আসে) ---
 @st.cache_resource
 def init_db():
-    conn = sqlite3.connect('news_db_safe.db', check_same_thread=False)
+    conn = sqlite3.connect('news_db_gemini.db', check_same_thread=False)
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS news_table
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, 
@@ -86,7 +96,27 @@ def init_db():
 
 conn, c = init_db()
 
-# --- স্ক্র্যাপিং লজিক ---
+# --- ৭ দিন আগের নিউজ ডিলিট করার লজিক ---
+def auto_delete_old():
+    limit = datetime.now() - timedelta(days=7)
+    c.execute("DELETE FROM news_table WHERE date < ?", (limit,))
+    conn.commit()
+
+# --- AI অনুবাদ ফাংশন ---
+def ai_translate(text, is_title=False):
+    if not api_configured:
+        return "API Key Error"
+    
+    role = "professional journalist"
+    prompt = f"As a {role}, translate this news {'title' if is_title else 'article'} into natural, highly professional Bengali suitable for a top-tier newspaper. Avoid literal or robotic translation. Ensure the tone is objective and informative.\n\nText:\n{text}"
+    
+    try:
+        response = model.generate_content(prompt)
+        return response.text.strip()
+    except Exception as e:
+        return "অনুবাদ সম্পন্ন করা সম্ভব হয়নি।"
+
+# --- স্ক্র্যাপিং লজিক (AI দ্বারা পুরো নিউজ অনুবাদ) ---
 def scrape_news():
     url = "https://www.aljazeera.com/" 
     headers = {'User-Agent': 'Mozilla/5.0'}
@@ -102,7 +132,6 @@ def scrape_news():
                 articles.append(heading)
                 if len(articles) >= 15: break
         
-        translator = GoogleTranslator(source='en', target='bn')
         new_items = 0
         
         for article in articles:
@@ -112,7 +141,7 @@ def scrape_news():
             if not link.startswith('http'): link = "https://www.aljazeera.com" + link
                 
             c.execute("SELECT * FROM news_table WHERE link=?", (link,))
-            if not c.fetchone():
+            if not c.fetchone() and api_configured:
                 try:
                     art_resp = requests.get(link, headers=headers, timeout=10)
                     art_soup = BeautifulSoup(art_resp.content, 'html.parser')
@@ -124,44 +153,51 @@ def scrape_news():
                     except: category = "Latest"
                         
                     paragraphs = art_soup.find_all('p')
+                    # পুরো খবরটিকে একসাথে প্রসেস করার জন্য প্রস্তুত করা হচ্ছে
                     valid_paragraphs = [p.text.strip() for p in paragraphs if len(p.text.split()) > 10]
+                    full_eng_text = "\n\n".join(valid_paragraphs)
                     
-                    translated_paragraphs = []
-                    for p_text in valid_paragraphs[:10]: 
-                        try:
-                            bn_p = translator.translate(p_text)
-                            translated_paragraphs.append(f"<p>{bn_p}</p>")
-                        except: pass
+                    if not full_eng_text:
+                        continue
                     
-                    bn_title = translator.translate(title)
-                    bn_full_text = "".join(translated_paragraphs) if translated_paragraphs else "No content available."
+                    # AI দিয়ে টাইটেল ও পুরো নিউজ অনুবাদ
+                    bn_title = ai_translate(title, is_title=True)
+                    bn_full_text = ai_translate(full_eng_text)
+                    
+                    # প্যারাগ্রাফগুলোকে HTML ট্যাগে সাজানো
+                    formatted_text = "".join([f"<p>{p.strip()}</p>" for p in bn_full_text.split('\n') if p.strip()])
                     
                     c.execute('''INSERT INTO news_table (title, link, translated_title, full_text, image_url, category, date) 
                                  VALUES (?, ?, ?, ?, ?, ?, ?)''', 
-                              (title, link, bn_title, bn_full_text, image_url, category, datetime.now()))
+                              (title, link, bn_title, formatted_text, image_url, category, datetime.now()))
                     conn.commit()
                     new_items += 1
+                    time.sleep(3) # Google API লিমিট এড়াতে একটু বিরতি
                 except: continue
         
-        return True, f"Successfully fetched {new_items} new articles!"
+        return True, f"Successfully fetched {new_items} new articles using AI!"
     except Exception as e:
         return False, f"Scraping Error: {e}"
 
 # ==========================================
-# Frontend UI
+# Frontend UI (হুবহু আগের ডিজাইন)
 # ==========================================
 
 if 'page_num' not in st.session_state: st.session_state.page_num = 1
 if 'view' not in st.session_state: st.session_state.view = 'home'
 if 'selected_news' not in st.session_state: st.session_state.selected_news = None
 
-if st.sidebar.button("🔄 Fetch Latest News"):
-    with st.spinner("Fetching and translating news..."):
-        success, msg = scrape_news()
-        if success: st.sidebar.success(msg)
-        else: st.sidebar.error(msg)
-        time.sleep(2)
-        st.rerun()
+if st.sidebar.button("🔄 Fetch Latest News (AI)"):
+    if api_configured:
+        with st.spinner("Fetching and translating entire news using AI..."):
+            auto_delete_old() # নতুন নিউজ আনার আগে ৭ দিন আগের নিউজ ডিলিট করবে
+            success, msg = scrape_news()
+            if success: st.sidebar.success(msg)
+            else: st.sidebar.error(msg)
+            time.sleep(2)
+            st.rerun()
+    else:
+        st.sidebar.error("Cannot fetch news. API Key is missing.")
 
 # --- ১. হোম / আর্কাইভ পেইজ ---
 if st.session_state.view == 'home':
@@ -169,7 +205,7 @@ if st.session_state.view == 'home':
 
     c.execute("SELECT DISTINCT category FROM news_table")
     db_categories = c.fetchall()
-    categories = ["All News"] + [cat[0] for cat in db_categories]
+    categories = ["All News"] + [cat[0] for cat in db_categories if cat[0]]
     
     col_filter, _ = st.columns([1, 3])
     with col_filter:
@@ -184,7 +220,7 @@ if st.session_state.view == 'home':
     all_news = c.fetchall()
 
     if not all_news:
-        st.info("No news available. Please click 'Fetch Latest News' from the sidebar to start.")
+        st.info("No news available. Please click 'Fetch Latest News (AI)' from the sidebar to start.")
     else:
         items_per_page = 12
         total_pages = math.ceil(len(all_news) / items_per_page)
@@ -235,7 +271,6 @@ elif st.session_state.view == 'details':
     
     img_html = f"""<div style="text-align: center; margin: 30px 0;"><img src="{news[2]}" style="max-width: 100%; width: 600px; height: auto; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.15);"></div>""" if news[2] else ""
     
-    # কোড ব্লক এড়াতে এই অংশের সব স্পেস বা ফাঁকা জায়গা পুরোপুরি মুছে দেওয়া হয়েছে
     article_html = f"""<div class="article-container">
 <h1 style='line-height: 1.4; color: {text_color}; text-align: center; margin-bottom: 15px; font-weight: 700;'>{news[1]}</h1>
 <p style='text-align: center; font-size: 15px; color: {meta_color};'>Category: <span class="category-badge" style="font-size: 15px;">{news[3]}</span> | Published: {formatted_date}</p>
