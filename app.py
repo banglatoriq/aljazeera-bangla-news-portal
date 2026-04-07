@@ -4,52 +4,42 @@ from datetime import datetime, timedelta
 import requests
 from bs4 import BeautifulSoup
 from deep_translator import GoogleTranslator
-import time
+from streamlit_autorefresh import st_autorefresh
+import math
 
 # --- পেইজ সেটআপ ---
 st.set_page_config(page_title="বাংলা নিউজ পোর্টাল", page_icon="📰", layout="wide")
 
-# --- ডাটাবেস তৈরি (Pro Version) ---
+# ১ ঘণ্টা পর পর নিউজ অটো-রিফ্রেশ করার জন্য (মিলিসেকেন্ডে হিসাব)
+st_autorefresh(interval=60 * 60 * 1000, key="news_update_timer")
+
+# --- ডাটাবেস সেটআপ ---
 @st.cache_resource
 def init_db():
-    conn = sqlite3.connect('news_db_pro.db', check_same_thread=False)
+    conn = sqlite3.connect('news_db_final.db', check_same_thread=False)
     c = conn.cursor()
-    # নতুন কলাম: category, image_url, full_text
-    c.execute('''CREATE TABLE IF NOT EXISTS news_pro
+    # নিউজ টেবিল
+    c.execute('''CREATE TABLE IF NOT EXISTS news_table
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                   title TEXT, link TEXT, translated_title TEXT, 
                   full_text TEXT, image_url TEXT, category TEXT, date TIMESTAMP)''')
+    # মেটাডাটা টেবিল (অটো-স্ক্র্যাপিং টাইম ট্র্যাক করতে)
+    c.execute('''CREATE TABLE IF NOT EXISTS metadata (last_scrape TIMESTAMP)''')
     conn.commit()
     return conn, c
 
 conn, c = init_db()
 
-# --- সেশন স্টেট (সিঙ্গেল পেইজ কন্ট্রোল করার জন্য) ---
-if 'page' not in st.session_state:
-    st.session_state.page = 'home'
-if 'current_news_id' not in st.session_state:
-    st.session_state.current_news_id = None
-
-def go_to_home():
-    st.session_state.page = 'home'
-    st.session_state.current_news_id = None
-
-def go_to_article(news_id):
-    st.session_state.page = 'article'
-    st.session_state.current_news_id = news_id
-
-# --- স্ক্র্যাপিং এবং অনুবাদের ফাংশন ---
-def scrape_and_translate():
+# --- অটো-স্ক্র্যাপিং লজিক ---
+def scrape_news():
     url = "https://www.aljazeera.com/"
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+    headers = {'User-Agent': 'Mozilla/5.0'}
     
     try:
         response = requests.get(url, headers=headers)
         soup = BeautifulSoup(response.content, 'html.parser')
+        articles = soup.find_all('h3', class_='gc__title')[:15] # ১৫টি খবর চেক করবে
         
-        articles = soup.find_all('h3', class_='gc__title')[:8] # দ্রুত হওয়ার জন্য ৮টি নিলাম
-        
-        new_news_count = 0
         translator = GoogleTranslator(source='en', target='bn')
         
         for article in articles:
@@ -57,136 +47,127 @@ def scrape_and_translate():
             link_tag = article.find('a')
             if not link_tag: continue
             
-            link = link_tag['href']
-            link = "https://www.aljazeera.com" + link if not link.startswith('http') else link
+            link = "https://www.aljazeera.com" + link_tag['href'] if not link_tag['href'].startswith('http') else link_tag['href']
             
-            # ডাটাবেসে আছে কি না চেক
-            c.execute("SELECT * FROM news_pro WHERE link=?", (link,))
+            c.execute("SELECT * FROM news_table WHERE link=?", (link,))
             if not c.fetchone():
                 try:
-                    # মূল খবরে প্রবেশ
                     art_resp = requests.get(link, headers=headers)
                     art_soup = BeautifulSoup(art_resp.content, 'html.parser')
                     
-                    # ১. মেটা ডাটা: ছবি (Featured Image)
+                    # ছবি ও ক্যাটাগরি সংগ্রহ
                     og_image = art_soup.find('meta', property='og:image')
-                    image_url = og_image['content'] if og_image else "https://via.placeholder.com/800x400?text=No+Image+Found"
+                    image_url = og_image['content'] if og_image else ""
                     
-                    # ২. ক্যাটাগরি (URL থেকে বের করা)
-                    try:
-                        category_raw = link.split('/')[3].capitalize()
-                        category = translator.translate(category_raw)
-                    except:
-                        category = "খবর"
+                    try: category = translator.translate(link.split('/')[3].capitalize())
+                    except: category = "আন্তর্জাতিক"
                         
-                    # ৩. পুরো খবর সংগ্রহ ও অনুবাদ (প্যারাগ্রাফগুলো)
                     paragraphs = art_soup.find_all('p')
-                    full_english_text = " ".join([p.text for p in paragraphs[1:-2]]) # প্রথম ও শেষের কিছু অপ্রয়োজনীয় লেখা বাদ
+                    full_english = " ".join([p.text for p in paragraphs[1:6]])
                     
-                    # অনেক বড় লেখা একসাথে অনুবাদ করলে Error আসতে পারে, তাই ৪০০০ অক্ষরে কাটছি
-                    if len(full_english_text) > 4000:
-                        full_english_text = full_english_text[:4000] + "..."
-                        
-                    translated_title = translator.translate(title)
-                    translated_text = translator.translate(full_english_text) if full_english_text.strip() else "খবরটি পড়ার জন্য মূল ওয়েবসাইটে যান।"
+                    # অনুবাদ
+                    bn_title = translator.translate(title)
+                    bn_text = translator.translate(full_english[:4000]) if full_english else ""
                     
-                    # ডাটাবেসে সেভ
-                    c.execute('''INSERT INTO news_pro (title, link, translated_title, full_text, image_url, category, date) 
+                    c.execute('''INSERT INTO news_table (title, link, translated_title, full_text, image_url, category, date) 
                                  VALUES (?, ?, ?, ?, ?, ?, ?)''', 
-                              (title, link, translated_title, translated_text, image_url, category, datetime.now()))
+                              (title, link, bn_title, bn_text, image_url, category, datetime.now()))
                     conn.commit()
-                    new_news_count += 1
-                except Exception as e:
-                    print(f"Error in single article: {e}")
-                
-        return True, f"{new_news_count} টি নতুন খবর ছবি ও বিস্তারিতসহ যোগ করা হয়েছে!"
-    except Exception as e:
-        return False, f"সমস্যা হয়েছে: {e}"
+                except: continue
+        
+        # সর্বশেষ আপডেটের সময় সেভ করা
+        c.execute("DELETE FROM metadata")
+        c.execute("INSERT INTO metadata VALUES (?)", (datetime.now(),))
+        conn.commit()
+        return True
+    except:
+        return False
 
-# ==========================================
-# Frontend ও UI ডিজাইন
-# ==========================================
+# ৭ দিন আগের নিউজ ডিলিট করা
+def auto_delete_old():
+    limit = datetime.now() - timedelta(days=7)
+    c.execute("DELETE FROM news_table WHERE date < ?", (limit,))
+    conn.commit()
 
-# --- সাইডবার (অ্যাডমিন) ---
-st.sidebar.title("⚙️ অ্যাডমিন প্যানেল")
-admin_pass = st.sidebar.text_input("পাসওয়ার্ড দিন", type="password")
+# অটো-চেক: ১ ঘণ্টা পার হয়েছে কি না
+c.execute("SELECT last_scrape FROM metadata")
+last_time = c.fetchone()
+if last_time is None or (datetime.now() - datetime.strptime(last_time[0], '%Y-%m-%d %H:%M:%S.%f')) > timedelta(hours=1):
+    scrape_news()
+    auto_delete_old()
 
-if admin_pass == "admin123":
-    st.sidebar.success("লগইন সফল!")
-    if st.sidebar.button("🔄 তাজা খবর নিয়ে আসুন (Scrape)"):
-        with st.spinner("Al Jazeera থেকে ছবি এবং পুরো খবর আনা হচ্ছে... দয়া করে অপেক্ষা করুন।"):
-            success, msg = scrape_and_translate()
-            if success: st.sidebar.success(msg)
-            else: st.sidebar.error(msg)
-            time.sleep(2)
-            st.rerun()
+# --- UI এবং নেভিগেশন ---
+if 'page_num' not in st.session_state: st.session_state.page_num = 1
+if 'view' not in st.session_state: st.session_state.view = 'home'
+if 'selected_news' not in st.session_state: st.session_state.selected_news = None
 
-# --- মূল পেইজ কন্ট্রোলার ---
-
-if st.session_state.page == 'home':
-    # ১. হোম পেইজ / আর্কাইভ পেইজ (Al Jazeera লেআউট)
-    st.title("📰 তাজা খবর পোর্টাল")
-    st.markdown("*আন্তর্জাতিক খবরের নির্ভরযোগ্য বাংলা অনুবাদ*")
+# আর্কাইভ পেইজে ফিরে আসা
+if st.session_state.view == 'home':
+    st.title("📰 আল-জাজিরা বাংলা")
+    
+    # মোট নিউজ সংখ্যা বের করা
+    c.execute("SELECT COUNT(*) FROM news_table")
+    total_news = c.fetchone()[0]
+    st.write(f"বর্তমানে মোট **{total_news}টি** খবর সংরক্ষিত আছে। (প্রতি ১ ঘণ্টা পর পর স্বয়ংক্রিয়ভাবে আপডেট হয়)")
     st.write("---")
-    
-    c.execute("SELECT id, translated_title, image_url, category, date, full_text FROM news_pro ORDER BY date DESC")
-    all_news = c.fetchall()
-    
-    if not all_news:
-        st.info("এখনো কোনো খবর নেই। অ্যাডমিন প্যানেল থেকে খবর আপডেট করুন।")
-    else:
-        # গ্রিড লেআউট (২ কলামে খবর দেখানোর জন্য)
-        for i in range(0, len(all_news), 2):
-            cols = st.columns(2) # দুটি কলাম তৈরি
-            
-            for j in range(2):
-                if i + j < len(all_news):
-                    news = all_news[i + j]
-                    news_id = news[0]
-                    title = news[1]
-                    img_url = news[2]
-                    cat = news[3]
-                    date_str = datetime.strptime(news[4], '%Y-%m-%d %H:%M:%S.%f').strftime("%d %b %Y, %I:%M %p")
-                    excerpt = news[5][:150] + "..." if news[5] else ""
-                    
-                    with cols[j]:
-                        # ছবির নিচে ক্যাটাগরি ও টাইটেল
-                        st.image(img_url, use_container_width=True)
-                        st.caption(f"**{cat}** • 🕒 {date_str}")
-                        st.subheader(title)
-                        st.write(excerpt)
-                        
-                        # "বিস্তারিত পড়ুন" বাটন (ক্লিক করলে সিঙ্গেল পেইজে যাবে)
-                        if st.button("বিস্তারিত পড়ুন ➔", key=f"btn_{news_id}"):
-                            go_to_article(news_id)
-                            st.rerun()
-            st.write("---") # প্রতিটি রো-এর পর একটি দাগ
 
-elif st.session_state.page == 'article':
-    # ২. সিঙ্গেল নিউজ পেইজ
-    news_id = st.session_state.current_news_id
-    c.execute("SELECT translated_title, image_url, category, date, full_text, link FROM news_pro WHERE id=?", (news_id,))
-    news_data = c.fetchone()
-    
-    if news_data:
-        # ব্যাক বাটন
-        if st.button("⬅️ ফিরে যান"):
-            go_to_home()
-            st.rerun()
+    # নিউজ লোড করা
+    c.execute("SELECT id, translated_title, image_url, category, date, full_text, link FROM news_table ORDER BY date DESC")
+    all_news = c.fetchall()
+
+    if not all_news:
+        st.info("নিউজ লোড হচ্ছে... অনুগ্রহ করে কিছুক্ষণ পর রিলোড দিন।")
+    else:
+        # প্যাজিনেশন ক্যালকুলেশন
+        items_per_page = 10
+        total_pages = math.ceil(len(all_news) / items_per_page)
+        
+        start_idx = (st.session_state.page_num - 1) * items_per_page
+        end_idx = start_idx + items_per_page
+        current_news_list = all_news[start_idx:end_idx]
+
+        # নিউজ লিস্ট লেআউট (ছোট থাম্বনেইল)
+        for news in current_news_list:
+            n_id, n_title, n_img, n_cat, n_date, n_text, n_link = news
             
-        st.write("---")
-        
-        # মূল খবর
-        title, img_url, cat, raw_date, full_text, original_link = news_data
-        date_str = datetime.strptime(raw_date, '%Y-%m-%d %H:%M:%S.%f').strftime("%d %b %Y, %I:%M %p")
-        
-        st.caption(f"**ক্যাটাগরি:** {cat} | **প্রকাশিত:** {date_str}")
-        st.header(title)
-        st.image(img_url, use_container_width=True)
-        
-        st.write("---")
-        # পুরো খবরের প্যারাগ্রাফগুলো সুন্দর করে দেখানো
-        st.markdown(f"<div style='text-align: justify; font-size: 18px; line-height: 1.6;'>{full_text}</div>", unsafe_allow_html=True)
-        
-        st.write("---")
-        st.markdown(f"*[মূল খবরটি ইংরেজিতে পড়তে এখানে ক্লিক করুন]({original_link})*")
+            # কলম লেআউট (ছবি বামে, লেখা ডানে)
+            col1, col2 = st.columns([1, 3])
+            
+            with col1:
+                if n_img: st.image(n_img, use_container_width=True)
+                else: st.image("https://via.placeholder.com/150", width=150)
+            
+            with col2:
+                st.caption(f"{n_cat} | {n_date[:16]}")
+                if st.button(n_title, key=f"title_{n_id}", help="বিস্তারিত পড়তে ক্লিক করুন"):
+                    st.session_state.selected_news = news
+                    st.session_state.view = 'details'
+                    st.rerun()
+            st.write("---")
+
+        # প্যাজিনেশন কন্ট্রোল
+        page_col1, page_col2, page_col3 = st.columns([1, 2, 1])
+        with page_col2:
+            if total_pages > 1:
+                cols = st.columns(total_pages if total_pages < 10 else 10)
+                for p in range(1, total_pages + 1):
+                    if st.button(str(p), key=f"page_{p}"):
+                        st.session_state.page_num = p
+                        st.rerun()
+
+elif st.session_state.view == 'details':
+    # সিঙ্গেল নিউজ ভিউ
+    news = st.session_state.selected_news
+    if st.button("⬅️ খবরে ফিরে যান"):
+        st.session_state.view = 'home'
+        st.rerun()
+    
+    st.write("---")
+    st.header(news[1])
+    st.caption(f"বিভাগ: {news[3]} | তারিখ: {news[4][:16]}")
+    if news[2]: st.image(news[2], use_container_width=True)
+    
+    st.write("---")
+    st.markdown(f"<div style='font-size:20px; line-height:1.8;'>{news[5]}</div>", unsafe_allow_html=True)
+    st.write("---")
+    st.markdown(f"[মূল খবরটি ইংরেজিতে পড়ুন]({news[6]})")
