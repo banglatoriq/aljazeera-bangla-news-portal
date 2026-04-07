@@ -26,7 +26,6 @@ except KeyError:
 st.sidebar.title("⚙️ Admin Panel")
 theme = st.sidebar.radio("🎨 Website Theme", ["Light Mode", "Dark Mode"], horizontal=True)
 
-# কালার প্যালেট নির্বাচন
 if theme == "Dark Mode":
     bg_color, text_color, card_bg, meta_color = "#0E1117", "#F8FAFC", "#1E293B", "#94A3B8"
     accent_color = "#38BDF8"
@@ -34,7 +33,6 @@ else:
     bg_color, text_color, card_bg, meta_color = "#F8FAFC", "#0F172A", "#FFFFFF", "#64748B"
     accent_color = "#0284C7"
 
-# সিএসএস (CSS) - হুবহু আগের ডিজাইন
 st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&display=swap');
@@ -82,10 +80,10 @@ html, body, h1, h2, h3, h4, h5, h6, p, button, a {{
 </style>
 """, unsafe_allow_html=True)
 
-# --- ডাটাবেস সেটআপ (নতুন ডাটাবেস নাম ব্যবহার করা হলো যেন আগের ভাঙা অনুবাদ না আসে) ---
+# --- ডাটাবেস সেটআপ (নতুন ভার্সন) ---
 @st.cache_resource
 def init_db():
-    conn = sqlite3.connect('news_db_gemini.db', check_same_thread=False)
+    conn = sqlite3.connect('news_db_gemini_v2.db', check_same_thread=False)
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS news_table
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, 
@@ -96,27 +94,35 @@ def init_db():
 
 conn, c = init_db()
 
-# --- ৭ দিন আগের নিউজ ডিলিট করার লজিক ---
 def auto_delete_old():
     limit = datetime.now() - timedelta(days=7)
     c.execute("DELETE FROM news_table WHERE date < ?", (limit,))
     conn.commit()
 
-# --- AI অনুবাদ ফাংশন ---
+# --- AI অনুবাদ ফাংশন (সেফটি ফিল্টার এবং সহজ ভাষার নির্দেশসহ) ---
 def ai_translate(text, is_title=False):
     if not api_configured:
         return "API Key Error"
     
-    role = "professional journalist"
-    prompt = f"As a {role}, translate this news {'title' if is_title else 'article'} into natural, highly professional Bengali suitable for a top-tier newspaper. Avoid literal or robotic translation. Ensure the tone is objective and informative.\n\nText:\n{text}"
+    # AI-কে সহজ ভাষায় অনুবাদ করার নির্দেশ
+    prompt = f"Translate this news {'title' if is_title else 'article'} into natural, simple, and easy-to-understand Bengali. Avoid difficult or complex Bengali words. Make it very easy for general readers to read. Keep the tone objective.\n\nText:\n{text}"
+    
+    # সংঘাত বা যুদ্ধের খবর যেন ব্লক না হয় তার জন্য সেফটি ফিল্টার বন্ধ করা
+    safety_settings = [
+        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+    ]
     
     try:
-        response = model.generate_content(prompt)
+        response = model.generate_content(prompt, safety_settings=safety_settings)
         return response.text.strip()
     except Exception as e:
+        print(f"Error: {e}")
         return "অনুবাদ সম্পন্ন করা সম্ভব হয়নি।"
 
-# --- স্ক্র্যাপিং লজিক (AI দ্বারা পুরো নিউজ অনুবাদ) ---
+# --- স্ক্র্যাপিং লজিক ---
 def scrape_news():
     url = "https://www.aljazeera.com/" 
     headers = {'User-Agent': 'Mozilla/5.0'}
@@ -153,18 +159,16 @@ def scrape_news():
                     except: category = "Latest"
                         
                     paragraphs = art_soup.find_all('p')
-                    # পুরো খবরটিকে একসাথে প্রসেস করার জন্য প্রস্তুত করা হচ্ছে
                     valid_paragraphs = [p.text.strip() for p in paragraphs if len(p.text.split()) > 10]
                     full_eng_text = "\n\n".join(valid_paragraphs)
                     
                     if not full_eng_text:
                         continue
                     
-                    # AI দিয়ে টাইটেল ও পুরো নিউজ অনুবাদ
+                    # অনুবাদ কল করা হচ্ছে
                     bn_title = ai_translate(title, is_title=True)
                     bn_full_text = ai_translate(full_eng_text)
                     
-                    # প্যারাগ্রাফগুলোকে HTML ট্যাগে সাজানো
                     formatted_text = "".join([f"<p>{p.strip()}</p>" for p in bn_full_text.split('\n') if p.strip()])
                     
                     c.execute('''INSERT INTO news_table (title, link, translated_title, full_text, image_url, category, date) 
@@ -172,7 +176,7 @@ def scrape_news():
                               (title, link, bn_title, formatted_text, image_url, category, datetime.now()))
                     conn.commit()
                     new_items += 1
-                    time.sleep(3) # Google API লিমিট এড়াতে একটু বিরতি
+                    time.sleep(3) 
                 except: continue
         
         return True, f"Successfully fetched {new_items} new articles using AI!"
@@ -180,7 +184,7 @@ def scrape_news():
         return False, f"Scraping Error: {e}"
 
 # ==========================================
-# Frontend UI (হুবহু আগের ডিজাইন)
+# Frontend UI
 # ==========================================
 
 if 'page_num' not in st.session_state: st.session_state.page_num = 1
@@ -190,7 +194,7 @@ if 'selected_news' not in st.session_state: st.session_state.selected_news = Non
 if st.sidebar.button("🔄 Fetch Latest News (AI)"):
     if api_configured:
         with st.spinner("Fetching and translating entire news using AI..."):
-            auto_delete_old() # নতুন নিউজ আনার আগে ৭ দিন আগের নিউজ ডিলিট করবে
+            auto_delete_old() 
             success, msg = scrape_news()
             if success: st.sidebar.success(msg)
             else: st.sidebar.error(msg)
