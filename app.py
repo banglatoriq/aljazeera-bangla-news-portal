@@ -14,8 +14,8 @@ st.set_page_config(page_title="Al Jazeera News Updates", page_icon="🌐", layou
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=api_key)
-    # 🔴 এখানে মডেলের নাম পরিবর্তন করে সবচেয়ে স্থিতিশীল 'gemini-pro' দেওয়া হয়েছে
-    model = genai.GenerativeModel('gemini-pro')
+    # গুগলের সবচেয়ে লেটেস্ট ও স্মার্ট মডেল
+    model = genai.GenerativeModel('gemini-1.5-flash')
     api_configured = True
 except KeyError:
     api_configured = False
@@ -50,7 +50,7 @@ html, body, h1, h2, h3, h4, h5, h6, p, button, a {{ font-family: 'Hind Siliguri'
 # --- ডাটাবেস সেটআপ ---
 @st.cache_resource
 def init_db():
-    conn = sqlite3.connect('news_db_gemini_v4.db', check_same_thread=False)
+    conn = sqlite3.connect('news_db_final.db', check_same_thread=False)
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS news_table
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, link TEXT, translated_title TEXT, 
@@ -70,7 +70,7 @@ def ai_translate(text, is_title=False):
     if not api_configured:
         return "API Key Error"
     
-    prompt = f"Translate the following English news text into simple, professional, and easy-to-read Bengali. Do not block any content, just translate it accurately.\n\nText:\n{text}"
+    prompt = f"Translate the following English news text into simple, highly professional, and easy-to-read Bengali suitable for a top-tier newspaper. Do not block any content, just translate it accurately.\n\nText:\n{text}"
     
     safety_settings = [
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
@@ -83,7 +83,6 @@ def ai_translate(text, is_title=False):
         response = model.generate_content(prompt, safety_settings=safety_settings)
         return response.text.strip()
     except Exception as e:
-        print(f"API Error: {e}")
         return f"এপিআই এরর: {str(e)}"
 
 # --- স্ক্র্যাপিং লজিক ---
@@ -144,11 +143,11 @@ def scrape_news():
 
 if 'page_num' not in st.session_state: st.session_state.page_num = 1
 if 'view' not in st.session_state: st.session_state.view = 'home'
-if 'selected_news' not in st.session_state: st.session_state.selected_news = None
+if 'selected_news_id' not in st.session_state: st.session_state.selected_news_id = None
 
 if st.sidebar.button("🔄 Fetch Latest News (AI)"):
     if api_configured:
-        with st.spinner("খবর আনা হচ্ছে এবং অনুবাদ করা হচ্ছে... (এতে কিছুটা সময় লাগতে পারে)"):
+        with st.spinner("খবর আনা হচ্ছে এবং অনুবাদ করা হচ্ছে... (API লিমিটের কারণে ২-৩ মিনিট লাগতে পারে)"):
             auto_delete_old() 
             success, msg = scrape_news()
             if success: st.sidebar.success(msg)
@@ -222,4 +221,17 @@ elif st.session_state.view == 'details':
     formatted_date = datetime.strptime(news[3], '%Y-%m-%d %H:%M:%S.%f').strftime('%B %d, %Y - %I:%M %p')
     img_html = f"""<div style="text-align: center; margin: 30px 0;"><img src="{news[1]}" style="max-width: 100%; width: 600px; height: auto; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.15);"></div>""" if news[1] else ""
     
-    article
+    article_html = f"""<div class="article-container">
+<h1 style='line-height: 1.4; color: {text_color}; text-align: center; margin-bottom: 15px; font-weight: 700;'>{news[0]}</h1>
+<p style='text-align: center; font-size: 15px; color: {meta_color};'>Category: <span class="category-badge" style="font-size: 15px;">{news[2]}</span> | Published: {formatted_date}</p>
+{img_html}
+<div class="article-text">
+{news[4]}
+</div>
+<hr style="border-top: 1px solid {meta_color}; opacity: 0.2; margin-top: 40px; margin-bottom: 20px;">
+<div style="text-align: center;">
+<a href="{news[5]}" target="_blank" style="color: {accent_color}; text-decoration: none; font-weight: 600; font-size: 16px;">🔗 Read the original article on Al Jazeera</a>
+</div>
+</div>"""
+    
+    st.markdown(article_html, unsafe_allow_html=True)
