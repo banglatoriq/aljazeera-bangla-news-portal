@@ -14,14 +14,12 @@ st.set_page_config(page_title="Al Jazeera News Updates", page_icon="🌐", layou
 @st.cache_resource
 def setup_ai_model(api_key):
     genai.configure(api_key=api_key)
-    # গুগলকে জিজ্ঞেস করা হচ্ছে আপনার API Key তে কোন কোন মডেল সাপোর্ট করে
     supported_models = []
     for m in genai.list_models():
         if 'generateContent' in m.supported_generation_methods:
             supported_models.append(m.name)
             
     if supported_models:
-        # সবচেয়ে প্রথম যে মডেলটি সাপোর্ট করবে, সেটিই অটোমেটিক নিয়ে নিবে
         selected_model_name = supported_models[0]
         return genai.GenerativeModel(selected_model_name), selected_model_name
     return None, None
@@ -86,7 +84,7 @@ st.sidebar.write("---")
 # --- ডাটাবেস সেটআপ ---
 @st.cache_resource
 def init_db():
-    conn = sqlite3.connect('news_db_final_fixed.db', check_same_thread=False)
+    conn = sqlite3.connect('news_db_clean.db', check_same_thread=False)
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS news_table
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, link TEXT, translated_title TEXT, 
@@ -101,12 +99,15 @@ def auto_delete_old():
     c.execute("DELETE FROM news_table WHERE date < ?", (limit,))
     conn.commit()
 
-# --- AI অনুবাদ ফাংশন ---
+# --- AI অনুবাদ ফাংশন (কঠোর নির্দেশসহ) ---
 def ai_translate(text, is_title=False):
     if not api_configured:
         return "API Key Error"
     
-    prompt = f"Translate the following English news text into simple, highly professional, and easy-to-read Bengali suitable for a top-tier newspaper. Do not block any content, just translate it accurately.\n\nText:\n{text}"
+    if is_title:
+        prompt = f"Translate the following news title into Bengali. OUTPUT ONLY THE TRANSLATED TITLE. DO NOT use any markdown formatting like ** or *. DO NOT add any introductory words.\n\nTitle:\n{text}"
+    else:
+        prompt = f"Translate the following English news text into simple, highly professional Bengali. OUTPUT ONLY THE TRANSLATED TEXT. DO NOT include any conversational filler, introductions (like 'Here is the translation'), or conclusions. DO NOT use any markdown formatting like ** or *. Just output the plain Bengali paragraphs.\n\nText:\n{text}"
     
     safety_settings = [
         {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
@@ -117,7 +118,11 @@ def ai_translate(text, is_title=False):
     
     try:
         response = model.generate_content(prompt, safety_settings=safety_settings)
-        return response.text.strip()
+        result = response.text.strip()
+        
+        # অতিরিক্ত নিরাপত্তা: যদি AI ভুল করে স্টার (**) দিয়েও দেয়, কোড সেটি মুছে ফেলবে
+        result = result.replace('**', '').replace('*', '')
+        return result
     except Exception as e:
         return f"এপিআই এরর: {str(e)}"
 
