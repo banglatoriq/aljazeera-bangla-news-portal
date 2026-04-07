@@ -12,7 +12,7 @@ import math
 st.set_page_config(page_title="বাংলা নিউজ পোর্টাল", page_icon="📰", layout="centered")
 
 # ৩০ মিনিট (১৮০০ সেকেন্ড) পর পর স্বয়ংক্রিয় রিফ্রেশ
-st_autorefresh(interval=30 * 60 * 1000, key="news_update_timer")
+st_autorefresh(interval=1 * 60 * 1000, key="news_update_timer")
 
 # --- ডাটাবেস সেটআপ ---
 @st.cache_resource
