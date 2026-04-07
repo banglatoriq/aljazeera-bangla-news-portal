@@ -14,7 +14,8 @@ st.set_page_config(page_title="Al Jazeera News Updates", page_icon="🌐", layou
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    # 🔴 এখানে ভুল ছিল। এবার লেটেস্ট ও স্টেবল gemini-pro দেওয়া হয়েছে
+    model = genai.GenerativeModel('gemini-pro')
     api_configured = True
 except KeyError:
     api_configured = False
@@ -52,7 +53,8 @@ if st.sidebar.button("🧪 Test API Connection"):
     if api_configured:
         try:
             with st.spinner("Testing Google API..."):
-                test_model = genai.GenerativeModel('gemini-1.5-flash')
+                # 🔴 এখানেও ভুল ছিল। gemini-pro করা হয়েছে।
+                test_model = genai.GenerativeModel('gemini-pro')
                 res = test_model.generate_content("Say 'API is working perfectly' in Bengali.")
                 st.sidebar.success(f"Success! Response: {res.text}")
         except Exception as e:
