@@ -227,4 +227,25 @@ elif st.session_state.view == 'details':
     c.execute("SELECT translated_title, image_url, category, date, full_text, link FROM news_table WHERE id=?", (st.session_state.selected_news_id,))
     news = c.fetchone()
     
-    if st.button("⬅
+    if st.button("⬅️ Back to News List"):
+        st.session_state.view = 'home'
+        st.rerun()
+    
+    st.write("")
+    formatted_date = datetime.strptime(news[3], '%Y-%m-%d %H:%M:%S.%f').strftime('%B %d, %Y - %I:%M %p')
+    img_html = f"""<div style="text-align: center; margin: 30px 0;"><img src="{news[1]}" style="max-width: 100%; width: 600px; height: auto; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.15);"></div>""" if news[1] else ""
+    
+    article_html = f"""<div class="article-container">
+<h1 style='line-height: 1.4; color: {text_color}; text-align: center; margin-bottom: 15px; font-weight: 700;'>{news[0]}</h1>
+<p style='text-align: center; font-size: 15px; color: {meta_color};'>Category: <span class="category-badge" style="font-size: 15px;">{news[2]}</span> | Published: {formatted_date}</p>
+{img_html}
+<div class="article-text">
+{news[4]}
+</div>
+<hr style="border-top: 1px solid {meta_color}; opacity: 0.2; margin-top: 40px; margin-bottom: 20px;">
+<div style="text-align: center;">
+<a href="{news[5]}" target="_blank" style="color: {accent_color}; text-decoration: none; font-weight: 600; font-size: 16px;">🔗 Read the original article on Al Jazeera</a>
+</div>
+</div>"""
+    
+    st.markdown(article_html, unsafe_allow_html=True)
