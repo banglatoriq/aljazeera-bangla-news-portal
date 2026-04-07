@@ -24,59 +24,52 @@ else:
     bg_color, text_color, card_bg, meta_color = "#F8FAFC", "#0F172A", "#FFFFFF", "#64748B"
     accent_color = "#0284C7"
 
-# সিএসএস (CSS) - ওভারল্যাপিং এড়াতে স্পেসিফিক ট্যাগ ব্যবহার করা হয়েছে
+# সিএসএস (CSS)
 st.markdown(f"""
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&display=swap');
-        
-        html, body, h1, h2, h3, h4, h5, h6, p, button, a {{
-            font-family: 'Hind Siliguri', sans-serif !important;
-        }}
-        
-        .stApp {{
-            background-color: {bg_color};
-        }}
-        
-        .news-card {{
-            background-color: {card_bg};
-            border-radius: 12px;
-            overflow: hidden;
-            height: 180px;
-            margin-bottom: 12px;
-            border: 1px solid {meta_color}33;
-        }}
-        
-        .news-meta {{
-            color: {meta_color};
-            font-size: 13.5px;
-            margin-top: 5px;
-            margin-bottom: 10px;
-        }}
-        
-        .category-badge {{
-            color: {accent_color};
-            font-weight: 700;
-            text-transform: uppercase;
-        }}
-        
-        .article-container {{
-            max-width: 800px;
-            margin: 0 auto;
-            background-color: {card_bg};
-            padding: 40px;
-            border-radius: 16px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
-            border: 1px solid {meta_color}22;
-        }}
-        
-        .article-text p {{
-            font-size: 19px;
-            line-height: 1.8;
-            color: {text_color};
-            text-align: justify;
-            margin-bottom: 15px;
-        }}
-    </style>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&display=swap');
+html, body, h1, h2, h3, h4, h5, h6, p, button, a {{
+    font-family: 'Hind Siliguri', sans-serif !important;
+}}
+.stApp {{
+    background-color: {bg_color};
+}}
+.news-card {{
+    background-color: {card_bg};
+    border-radius: 12px;
+    overflow: hidden;
+    height: 180px;
+    margin-bottom: 12px;
+    border: 1px solid {meta_color}33;
+}}
+.news-meta {{
+    color: {meta_color};
+    font-size: 13.5px;
+    margin-top: 5px;
+    margin-bottom: 10px;
+}}
+.category-badge {{
+    color: {accent_color};
+    font-weight: 700;
+    text-transform: uppercase;
+}}
+.article-container {{
+    max-width: 800px;
+    margin: 0 auto;
+    background-color: {card_bg};
+    padding: 40px;
+    border-radius: 16px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+    border: 1px solid {meta_color}22;
+}}
+.article-text p {{
+    font-size: 19px;
+    line-height: 1.8;
+    color: {text_color};
+    text-align: justify;
+    margin-bottom: 15px;
+}}
+</style>
 """, unsafe_allow_html=True)
 
 # --- ডাটাবেস সেটআপ ---
@@ -178,7 +171,6 @@ if st.session_state.view == 'home':
     db_categories = c.fetchall()
     categories = ["All News"] + [cat[0] for cat in db_categories]
     
-    # রেডিও বাটনের বদলে সুন্দর ড্রপডাউন (Selectbox)
     col_filter, _ = st.columns([1, 3])
     with col_filter:
         selected_category = st.selectbox("🏷️ Filter by Category:", categories)
@@ -208,11 +200,7 @@ if st.session_state.view == 'home':
                 if i + j < len(current_page_news):
                     news = current_page_news[i + j]
                     with cols[j]:
-                        st.markdown(f'''
-                            <div class="news-card">
-                                <img src="{news[2]}" style="width: 100%; height: 100%; object-fit: cover;">
-                            </div>
-                        ''', unsafe_allow_html=True)
+                        st.markdown(f"""<div class="news-card"><img src="{news[2]}" style="width: 100%; height: 100%; object-fit: cover;"></div>""", unsafe_allow_html=True)
                         
                         formatted_date = datetime.strptime(news[4], '%Y-%m-%d %H:%M:%S.%f').strftime('%b %d, %Y')
                         st.markdown(f"<div class='news-meta'><span class='category-badge'>{news[3]}</span> &nbsp;|&nbsp; {formatted_date}</div>", unsafe_allow_html=True)
@@ -245,30 +233,20 @@ elif st.session_state.view == 'details':
     
     formatted_date = datetime.strptime(news[4], '%Y-%m-%d %H:%M:%S.%f').strftime('%B %d, %Y - %I:%M %p')
     
-    img_html = f'''
-<div style="text-align: center; margin: 30px 0;">
-    <img src="{news[2]}" style="max-width: 100%; width: 600px; height: auto; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.15);">
-</div>
-''' if news[2] else ""
+    img_html = f"""<div style="text-align: center; margin: 30px 0;"><img src="{news[2]}" style="max-width: 100%; width: 600px; height: auto; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.15);"></div>""" if news[2] else ""
     
-    # ইনডেন্টেশন (খালি স্পেস) পুরোপুরি সরিয়ে দেওয়া হয়েছে, যাতে কোড ব্লক হিসেবে না দেখায়
-    article_html = f"""
-<div class="article-container">
-    <h1 style='line-height: 1.4; color: {text_color}; text-align: center; margin-bottom: 15px; font-weight: 700;'>
-        {news[1]}
-    </h1>
-    <p style='text-align: center; font-size: 15px; color: {meta_color};'>
-        Category: <span class="category-badge" style="font-size: 15px;">{news[3]}</span> | Published: {formatted_date}
-    </p>
-    {img_html}
-    <div class="article-text">
-        {news[5]}
-    </div>
-    <hr style="border-top: 1px solid {meta_color}; opacity: 0.2; margin-top: 40px; margin-bottom: 20px;">
-    <div style="text-align: center;">
-        <a href="{news[6]}" target="_blank" style="color: {accent_color}; text-decoration: none; font-weight: 600; font-size: 16px;">🔗 Read the original article on Al Jazeera</a>
-    </div>
+    # কোড ব্লক এড়াতে এই অংশের সব স্পেস বা ফাঁকা জায়গা পুরোপুরি মুছে দেওয়া হয়েছে
+    article_html = f"""<div class="article-container">
+<h1 style='line-height: 1.4; color: {text_color}; text-align: center; margin-bottom: 15px; font-weight: 700;'>{news[1]}</h1>
+<p style='text-align: center; font-size: 15px; color: {meta_color};'>Category: <span class="category-badge" style="font-size: 15px;">{news[3]}</span> | Published: {formatted_date}</p>
+{img_html}
+<div class="article-text">
+{news[5]}
 </div>
-"""
+<hr style="border-top: 1px solid {meta_color}; opacity: 0.2; margin-top: 40px; margin-bottom: 20px;">
+<div style="text-align: center;">
+<a href="{news[6]}" target="_blank" style="color: {accent_color}; text-decoration: none; font-weight: 600; font-size: 16px;">🔗 Read the original article on Al Jazeera</a>
+</div>
+</div>"""
     
     st.markdown(article_html, unsafe_allow_html=True)
