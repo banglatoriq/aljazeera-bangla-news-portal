@@ -10,16 +10,37 @@ import time
 # --- পেইজ সেটআপ ---
 st.set_page_config(page_title="Al Jazeera News Updates", page_icon="🌐", layout="wide")
 
-# --- Gemini API Setup ---
+# --- 🔴 স্মার্ট Gemini API Setup (Auto-Detect Model) ---
+@st.cache_resource
+def setup_ai_model(api_key):
+    genai.configure(api_key=api_key)
+    # গুগলকে জিজ্ঞেস করা হচ্ছে আপনার API Key তে কোন কোন মডেল সাপোর্ট করে
+    supported_models = []
+    for m in genai.list_models():
+        if 'generateContent' in m.supported_generation_methods:
+            supported_models.append(m.name)
+            
+    if supported_models:
+        # সবচেয়ে প্রথম যে মডেলটি সাপোর্ট করবে, সেটিই অটোমেটিক নিয়ে নিবে
+        selected_model_name = supported_models[0]
+        return genai.GenerativeModel(selected_model_name), selected_model_name
+    return None, None
+
+api_configured = False
+model = None
+active_model_name = ""
+
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
-    genai.configure(api_key=api_key)
-    # 🔴 এখানে ভুল ছিল। এবার লেটেস্ট ও স্টেবল gemini-pro দেওয়া হয়েছে
-    model = genai.GenerativeModel('gemini-pro')
-    api_configured = True
+    model, active_model_name = setup_ai_model(api_key)
+    if model:
+        api_configured = True
+    else:
+        st.error("Error: আপনার API Key-তে কোনো টেক্সট মডেল সাপোর্ট করছে না।")
 except KeyError:
-    api_configured = False
-    st.error("Error: Gemini API Key not found in Streamlit Secrets. Please add it via Streamlit Cloud Settings.")
+    st.error("Error: Gemini API Key not found in Streamlit Secrets.")
+except Exception as e:
+    st.error(f"API Configuration Error: {e}")
 
 # ==========================================
 # থিম এবং ফন্ট সেটআপ
@@ -53,14 +74,13 @@ if st.sidebar.button("🧪 Test API Connection"):
     if api_configured:
         try:
             with st.spinner("Testing Google API..."):
-                # 🔴 এখানেও ভুল ছিল। gemini-pro করা হয়েছে।
-                test_model = genai.GenerativeModel('gemini-pro')
-                res = test_model.generate_content("Say 'API is working perfectly' in Bengali.")
-                st.sidebar.success(f"Success! Response: {res.text}")
+                res = model.generate_content("Say 'API is working perfectly' in Bengali.")
+                st.sidebar.success(f"Success! Auto-connected to: {active_model_name}")
+                st.sidebar.info(f"Response: {res.text}")
         except Exception as e:
             st.sidebar.error(f"API Error: {e}")
     else:
-        st.sidebar.error("API Key missing.")
+        st.sidebar.error("API Key missing or invalid.")
 st.sidebar.write("---")
 
 # --- ডাটাবেস সেটআপ ---
@@ -163,7 +183,7 @@ if 'selected_news_id' not in st.session_state: st.session_state.selected_news_id
 
 if st.sidebar.button("🔄 Fetch Latest News (AI)"):
     if api_configured:
-        with st.spinner("খবর আনা হচ্ছে এবং অনুবাদ করা হচ্ছে... (API লিমিটের কারণে ২-৩ মিনিট লাগতে পারে)"):
+        with st.spinner(f"খবর আনা হচ্ছে এবং {active_model_name} দিয়ে অনুবাদ করা হচ্ছে..."):
             auto_delete_old() 
             success, msg = scrape_news()
             if success: st.sidebar.success(msg)
@@ -171,7 +191,7 @@ if st.sidebar.button("🔄 Fetch Latest News (AI)"):
             time.sleep(2)
             st.rerun()
     else:
-        st.sidebar.error("Cannot fetch news. API Key is missing.")
+        st.sidebar.error("Cannot fetch news. API Key is missing or invalid.")
 
 # --- ১. হোম / আর্কাইভ পেইজ ---
 if st.session_state.view == 'home':
