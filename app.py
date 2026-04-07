@@ -7,14 +7,13 @@ import google.generativeai as genai
 import math
 import time
 
-# --- পেইজ সেটআপ (Wide Layout) ---
+# --- পেইজ সেটআপ ---
 st.set_page_config(page_title="Al Jazeera News Updates", page_icon="🌐", layout="wide")
 
-# --- Gemini API Setup (Secure) ---
+# --- Gemini API Setup ---
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=api_key)
-    # গুগলের সবচেয়ে লেটেস্ট ও স্মার্ট মডেল
     model = genai.GenerativeModel('gemini-1.5-flash')
     api_configured = True
 except KeyError:
@@ -47,10 +46,25 @@ html, body, h1, h2, h3, h4, h5, h6, p, button, a {{ font-family: 'Hind Siliguri'
 </style>
 """, unsafe_allow_html=True)
 
+# --- API Test Button ---
+st.sidebar.write("---")
+if st.sidebar.button("🧪 Test API Connection"):
+    if api_configured:
+        try:
+            with st.spinner("Testing Google API..."):
+                test_model = genai.GenerativeModel('gemini-1.5-flash')
+                res = test_model.generate_content("Say 'API is working perfectly' in Bengali.")
+                st.sidebar.success(f"Success! Response: {res.text}")
+        except Exception as e:
+            st.sidebar.error(f"API Error: {e}")
+    else:
+        st.sidebar.error("API Key missing.")
+st.sidebar.write("---")
+
 # --- ডাটাবেস সেটআপ ---
 @st.cache_resource
 def init_db():
-    conn = sqlite3.connect('news_db_final.db', check_same_thread=False)
+    conn = sqlite3.connect('news_db_final_fixed.db', check_same_thread=False)
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS news_table
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, link TEXT, translated_title TEXT, 
@@ -213,25 +227,4 @@ elif st.session_state.view == 'details':
     c.execute("SELECT translated_title, image_url, category, date, full_text, link FROM news_table WHERE id=?", (st.session_state.selected_news_id,))
     news = c.fetchone()
     
-    if st.button("⬅️ Back to News List"):
-        st.session_state.view = 'home'
-        st.rerun()
-    
-    st.write("")
-    formatted_date = datetime.strptime(news[3], '%Y-%m-%d %H:%M:%S.%f').strftime('%B %d, %Y - %I:%M %p')
-    img_html = f"""<div style="text-align: center; margin: 30px 0;"><img src="{news[1]}" style="max-width: 100%; width: 600px; height: auto; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.15);"></div>""" if news[1] else ""
-    
-    article_html = f"""<div class="article-container">
-<h1 style='line-height: 1.4; color: {text_color}; text-align: center; margin-bottom: 15px; font-weight: 700;'>{news[0]}</h1>
-<p style='text-align: center; font-size: 15px; color: {meta_color};'>Category: <span class="category-badge" style="font-size: 15px;">{news[2]}</span> | Published: {formatted_date}</p>
-{img_html}
-<div class="article-text">
-{news[4]}
-</div>
-<hr style="border-top: 1px solid {meta_color}; opacity: 0.2; margin-top: 40px; margin-bottom: 20px;">
-<div style="text-align: center;">
-<a href="{news[5]}" target="_blank" style="color: {accent_color}; text-decoration: none; font-weight: 600; font-size: 16px;">🔗 Read the original article on Al Jazeera</a>
-</div>
-</div>"""
-    
-    st.markdown(article_html, unsafe_allow_html=True)
+    if st.button("⬅
