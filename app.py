@@ -1,26 +1,30 @@
 import streamlit as st
 import sqlite3
-import math  # 🔴 এই লাইনটি আগেরবার মিসিং ছিল!
+import math
+import asyncio
 from datetime import datetime, timedelta
 import requests
 from bs4 import BeautifulSoup
 from deep_translator import GoogleTranslator
 from gtts import gTTS
+import edge_tts
 import feedparser
 import io
+import tempfile
 import time
+import os
 
 # --- পেইজ সেটআপ ---
 st.set_page_config(page_title="আন্তর্জাতিক সংবাদ - বাংলা", page_icon="📰", layout="wide")
 
 # ==========================================
-# থিম এবং ফন্ট সেটআপ (চোখের আরামদায়ক বইয়ের পাতার রঙ)
+# থিম এবং ফন্ট সেটআপ (বইয়ের পাতার রঙ)
 # ==========================================
-bg_color = "#FDF6E3"       # বইয়ের পাতার মতো হলদেটে রঙ
-text_color = "#2C2C2C"     # গাঢ় ছাই/কালো রঙ
-card_bg = "#FFFBF0"        # খবরের কার্ডের রঙ
-meta_color = "#5D6D7E"     # তারিখ বা ক্যাটাগরির রঙ
-accent_color = "#D35400"   # আলজাজিরার মতো কমলা/সোনালী রঙ
+bg_color = "#FDF6E3"       
+text_color = "#2C2C2C"     
+card_bg = "#FFFBF0"        
+meta_color = "#5D6D7E"     
+accent_color = "#D35400"   
 
 st.markdown(f"""
 <style>
@@ -32,11 +36,10 @@ html, body, h1, h2, h3, h4, h5, h6, p, button, a {{ font-family: 'Hind Siliguri'
 .category-badge {{ color: {accent_color}; font-weight: 700; text-transform: uppercase; }}
 .article-container {{ max-width: 850px; margin: 0 auto; background-color: {card_bg}; padding: 40px; border-radius: 16px; border: 1px solid #E5E0D5; box-shadow: 0 10px 25px rgba(0,0,0,0.03); }}
 .article-text p {{ font-size: 20px; line-height: 1.8; color: {text_color}; text-align: justify; margin-bottom: 18px; }}
-.audio-player {{ margin: 20px 0; padding: 15px; background-color: #F4F1EA; border-radius: 10px; text-align: center; }}
+.audio-player {{ margin: 20px 0; padding: 15px; background-color: #F4F1EA; border-radius: 10px; text-align: center; border: 1px solid #E5E0D5; }}
 </style>
 """, unsafe_allow_html=True)
 
-# --- লোগো ডিজাইন ---
 def show_logo():
     st.markdown("""
     <div style="text-align: center; margin-bottom: 30px; padding-top: 20px;">
@@ -60,7 +63,7 @@ def init_db():
 
 conn, c = init_db()
 
-# --- অনুবাদ ফাংশন (Smart Fallback সহ) ---
+# --- অনুবাদ ফাংশন ---
 def safe_translate(text):
     if not text: return ""
     try:
@@ -80,15 +83,37 @@ def safe_translate(text):
     except:
         return text 
 
-# --- অডিও জেনারেটর (Text to Speech) ---
+# --- 🔴 স্মার্ট ও ন্যাচারাল অডিও জেনারেটর (Edge TTS) ---
 def generate_audio(text):
     clean_text = BeautifulSoup(text, "html.parser").get_text(separator=' ')
-    tts = gTTS(text=clean_text[:4500], lang='bn') 
-    fp = io.BytesIO()
-    tts.write_to_fp(fp)
-    return fp.getvalue()
+    clean_text = clean_text[:4000] # লিমিট
+    
+    try:
+        # মাইক্রোসফটের ন্যাচারাল ভয়েস (নবনীতা)
+        async def _main():
+            communicate = edge_tts.Communicate(clean_text, "bn-BD-NabanitaNeural")
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
+                temp_path = fp.name
+            await communicate.save(temp_path)
+            return temp_path
+            
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        audio_file = loop.run_until_complete(_main())
+        
+        with open(audio_file, "rb") as f:
+            audio_data = f.read()
+        os.remove(audio_file) # ক্লিনআপ
+        return audio_data
+        
+    except Exception as e:
+        # কোনো কারণে ফেইল করলে আগের gTTS ব্যবহার করবে
+        tts = gTTS(text=clean_text, lang='bn') 
+        fp = io.BytesIO()
+        tts.write_to_fp(fp)
+        return fp.getvalue()
 
-# --- স্বয়ংক্রিয় স্ক্র্যাপিং (Multi-Source RSS) ---
+# --- স্বয়ংক্রিয় স্ক্র্যাপিং ---
 def scrape_news():
     news_feeds = {
         "Al Jazeera": "https://www.aljazeera.com/xml/rss/all.xml",
@@ -107,7 +132,8 @@ def scrape_news():
                 title = entry.title
                 link = entry.link
                 
-                c.execute("SELECT * FROM news_table WHERE link=?", (link,))
+                # 🔴 ডুপ্লিকেট চেকার: লিংক এবং টাইটেল দুটোই চেক করবে
+                c.execute("SELECT * FROM news_table WHERE link=? OR title=?", (link, title))
                 if not c.fetchone():
                     try:
                         art_resp = requests.get(link, headers=headers, timeout=10)
@@ -153,8 +179,8 @@ def auto_delete_old():
 def check_for_auto_update():
     c.execute("SELECT last_update FROM update_meta")
     row = c.fetchone()
-    
     should_update = False
+    
     if not row:
         should_update = True
     else:
@@ -182,6 +208,7 @@ if st.sidebar.button("🔄 খবর আপডেট করুন"):
         auto_delete_old()
         success, count = scrape_news()
         st.sidebar.success(f"{count}টি নতুন খবর পাওয়া গেছে!")
+        time.sleep(1)
         st.rerun()
 
 if 'page_num' not in st.session_state: st.session_state.page_num = 1
@@ -192,7 +219,6 @@ if 'selected_news_id' not in st.session_state: st.session_state.selected_news_id
 if st.session_state.view == 'home':
     show_logo()
     
-    # সোর্স ফিল্টার
     c.execute("SELECT DISTINCT source FROM news_table")
     sources = ["সব সোর্স"] + [s[0] for s in c.fetchall() if s[0]]
     
@@ -229,13 +255,16 @@ if st.session_state.view == 'home':
                             st.rerun()
             st.write("")
 
+        # 🔴 পেজিনেশন মাঝখানে আনার ম্যাজিক
         st.write("---")
         if total_pages > 1:
-            page_cols = st.columns(total_pages if total_pages < 15 else 15)
+            spacer_ratio = 4 # ডানে-বামে বড় ফাঁকা জায়গা
+            page_cols = st.columns([spacer_ratio] + [1]*total_pages + [spacer_ratio])
+            
             for p in range(1, total_pages + 1):
-                with page_cols[p-1]:
+                with page_cols[p]: # প্রথম কলামটি spacer, তাই p ইন্ডেক্সেই বাটন বসবে
                     btn_type = "primary" if p == st.session_state.page_num else "secondary"
-                    if st.button(str(p), key=f"page_{p}", type=btn_type):
+                    if st.button(str(p), key=f"page_{p}", type=btn_type, use_container_width=True):
                         st.session_state.page_num = p
                         st.rerun()
 
@@ -246,21 +275,20 @@ elif st.session_state.view == 'details':
     
     col_back, _ = st.columns([1, 5])
     with col_back:
-        if st.button("🏠 হোম পেজে যান", use_container_width=True):
+        if st.button("⬅️ হোম পেজে যান", use_container_width=True):
             st.session_state.view = 'home'
             st.rerun()
     
     st.write("")
     formatted_date = datetime.strptime(news[3], '%Y-%m-%d %H:%M:%S.%f').strftime('%B %d, %Y - %I:%M %p')
     
-    # অডিও প্লেয়ার সেকশন
     st.markdown('<div class="audio-player">', unsafe_allow_html=True)
-    if st.button("🎧 সংবাদটি বাংলায় শুনুন"):
-        with st.spinner("অডিও তৈরি হচ্ছে, একটু অপেক্ষা করুন..."):
+    if st.button("🎧 সংবাদটি শুনুন (Smart AI Voice)"):
+        with st.spinner("ন্যাচারাল অডিও তৈরি হচ্ছে, একটু অপেক্ষা করুন..."):
             try:
                 audio_bytes = generate_audio(news[4])
                 st.audio(audio_bytes, format='audio/mp3')
-            except:
+            except Exception as e:
                 st.error("অডিও তৈরি করতে সমস্যা হয়েছে।")
     st.markdown('</div>', unsafe_allow_html=True)
 
