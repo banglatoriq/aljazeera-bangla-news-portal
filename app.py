@@ -3,42 +3,12 @@ import sqlite3
 from datetime import datetime, timedelta
 import requests
 from bs4 import BeautifulSoup
-import google.generativeai as genai
+from deep_translator import GoogleTranslator
 import math
 import time
 
 # --- পেইজ সেটআপ ---
 st.set_page_config(page_title="Al Jazeera News Updates", page_icon="🌐", layout="wide")
-
-# --- 🔴 স্মার্ট Gemini API Setup (Auto-Detect Model) ---
-@st.cache_resource
-def setup_ai_model(api_key):
-    genai.configure(api_key=api_key)
-    supported_models = []
-    for m in genai.list_models():
-        if 'generateContent' in m.supported_generation_methods:
-            supported_models.append(m.name)
-            
-    if supported_models:
-        selected_model_name = supported_models[0]
-        return genai.GenerativeModel(selected_model_name), selected_model_name
-    return None, None
-
-api_configured = False
-model = None
-active_model_name = ""
-
-try:
-    api_key = st.secrets["GEMINI_API_KEY"]
-    model, active_model_name = setup_ai_model(api_key)
-    if model:
-        api_configured = True
-    else:
-        st.error("Error: আপনার API Key-তে কোনো টেক্সট মডেল সাপোর্ট করছে না।")
-except KeyError:
-    st.error("Error: Gemini API Key not found in Streamlit Secrets.")
-except Exception as e:
-    st.error(f"API Configuration Error: {e}")
 
 # ==========================================
 # থিম এবং ফন্ট সেটআপ
@@ -66,25 +36,10 @@ html, body, h1, h2, h3, h4, h5, h6, p, button, a {{ font-family: 'Hind Siliguri'
 </style>
 """, unsafe_allow_html=True)
 
-# --- API Test Button ---
-st.sidebar.write("---")
-if st.sidebar.button("🧪 Test API Connection"):
-    if api_configured:
-        try:
-            with st.spinner("Testing Google API..."):
-                res = model.generate_content("Say 'API is working perfectly' in Bengali.")
-                st.sidebar.success(f"Success! Auto-connected to: {active_model_name}")
-                st.sidebar.info(f"Response: {res.text}")
-        except Exception as e:
-            st.sidebar.error(f"API Error: {e}")
-    else:
-        st.sidebar.error("API Key missing or invalid.")
-st.sidebar.write("---")
-
 # --- ডাটাবেস সেটআপ ---
 @st.cache_resource
 def init_db():
-    conn = sqlite3.connect('news_db_clean.db', check_same_thread=False)
+    conn = sqlite3.connect('news_db_google.db', check_same_thread=False)
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS news_table
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, link TEXT, translated_title TEXT, 
@@ -99,32 +54,24 @@ def auto_delete_old():
     c.execute("DELETE FROM news_table WHERE date < ?", (limit,))
     conn.commit()
 
-# --- AI অনুবাদ ফাংশন (কঠোর নির্দেশসহ) ---
-def ai_translate(text, is_title=False):
-    if not api_configured:
-        return "API Key Error"
-    
-    if is_title:
-        prompt = f"Translate the following news title into Bengali. OUTPUT ONLY THE TRANSLATED TITLE. DO NOT use any markdown formatting like ** or *. DO NOT add any introductory words.\n\nTitle:\n{text}"
-    else:
-        prompt = f"Translate the following English news text into simple, highly professional Bengali. OUTPUT ONLY THE TRANSLATED TEXT. DO NOT include any conversational filler, introductions (like 'Here is the translation'), or conclusions. DO NOT use any markdown formatting like ** or *. Just output the plain Bengali paragraphs.\n\nText:\n{text}"
-    
-    safety_settings = [
-        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-    ]
-    
+# --- স্মার্ট Google Translate ফাংশন (বড় টেক্সটের জন্য) ---
+def safe_translate(text):
     try:
-        response = model.generate_content(prompt, safety_settings=safety_settings)
-        result = response.text.strip()
-        
-        # অতিরিক্ত নিরাপত্তা: যদি AI ভুল করে স্টার (**) দিয়েও দেয়, কোড সেটি মুছে ফেলবে
-        result = result.replace('**', '').replace('*', '')
-        return result
+        if not text:
+            return ""
+        # বড় লেখাকে ছোট বাক্যে ভেঙে অনুবাদ করবে যেন এরর না আসে
+        translator = GoogleTranslator(source='en', target='bn')
+        sentences = text.split('.')
+        translated_text = ""
+        for sentence in sentences:
+            if sentence.strip():
+                try:
+                    translated_text += translator.translate(sentence.strip()) + "। "
+                except:
+                    pass
+        return translated_text.strip()
     except Exception as e:
-        return f"এপিআই এরর: {str(e)}"
+        return "অনুবাদ সম্পন্ন করা সম্ভব হয়নি।"
 
 # --- স্ক্র্যাপিং লজিক ---
 def scrape_news():
@@ -135,6 +82,7 @@ def scrape_news():
         response = requests.get(url, headers=headers, timeout=15)
         soup = BeautifulSoup(response.content, 'html.parser')
         
+        # ৮টি খবর নেওয়া হচ্ছে
         articles = [h for h in soup.find_all(['h3', 'h2']) if h.find('a')][:8]
         new_items = 0
         
@@ -144,7 +92,7 @@ def scrape_news():
             link = "https://www.aljazeera.com" + link if not link.startswith('http') else link
                 
             c.execute("SELECT * FROM news_table WHERE link=?", (link,))
-            if not c.fetchone() and api_configured:
+            if not c.fetchone():
                 try:
                     art_resp = requests.get(link, headers=headers, timeout=10)
                     art_soup = BeautifulSoup(art_resp.content, 'html.parser')
@@ -159,22 +107,25 @@ def scrape_news():
                     if not full_eng_text:
                         continue
                     
-                    bn_title = ai_translate(title, is_title=True)
-                    time.sleep(2) 
+                    # Google Translator দিয়ে অনুবাদ
+                    bn_title = safe_translate(title)
+                    time.sleep(1) # খুব দ্রুত রিকোয়েস্ট পাঠালে গুগল ব্লক করতে পারে
                     
-                    bn_full_text = ai_translate(full_eng_text)
-                    time.sleep(3)
-                    
-                    formatted_text = "".join([f"<p>{p.strip()}</p>" for p in bn_full_text.split('\n') if p.strip()])
+                    bn_full_text = ""
+                    # প্যারাগ্রাফগুলো আলাদাভাবে অনুবাদ করা হচ্ছে
+                    for p in full_eng_text.split('\n\n'):
+                        if p.strip():
+                            bn_full_text += f"<p>{safe_translate(p.strip())}</p>"
+                            time.sleep(1)
                     
                     c.execute('''INSERT INTO news_table (title, link, translated_title, full_text, image_url, category, date) 
                                  VALUES (?, ?, ?, ?, ?, ?, ?)''', 
-                              (title, link, bn_title, formatted_text, image_url, category, datetime.now()))
+                              (title, link, bn_title, bn_full_text, image_url, category, datetime.now()))
                     conn.commit()
                     new_items += 1
                 except: continue
         
-        return True, f"Successfully fetched {new_items} new articles using AI!"
+        return True, f"Successfully fetched {new_items} new articles!"
     except Exception as e:
         return False, f"Scraping Error: {e}"
 
@@ -186,17 +137,14 @@ if 'page_num' not in st.session_state: st.session_state.page_num = 1
 if 'view' not in st.session_state: st.session_state.view = 'home'
 if 'selected_news_id' not in st.session_state: st.session_state.selected_news_id = None
 
-if st.sidebar.button("🔄 Fetch Latest News (AI)"):
-    if api_configured:
-        with st.spinner(f"খবর আনা হচ্ছে এবং {active_model_name} দিয়ে অনুবাদ করা হচ্ছে..."):
-            auto_delete_old() 
-            success, msg = scrape_news()
-            if success: st.sidebar.success(msg)
-            else: st.sidebar.error(msg)
-            time.sleep(2)
-            st.rerun()
-    else:
-        st.sidebar.error("Cannot fetch news. API Key is missing or invalid.")
+if st.sidebar.button("🔄 Fetch Latest News (Free Translate)"):
+    with st.spinner("খবর আনা হচ্ছে এবং বিনামূল্যে অনুবাদ করা হচ্ছে..."):
+        auto_delete_old() 
+        success, msg = scrape_news()
+        if success: st.sidebar.success(msg)
+        else: st.sidebar.error(msg)
+        time.sleep(2)
+        st.rerun()
 
 # --- ১. হোম / আর্কাইভ পেইজ ---
 if st.session_state.view == 'home':
@@ -216,7 +164,7 @@ if st.session_state.view == 'home':
     all_news = c.fetchall()
 
     if not all_news:
-        st.info("এখনো কোনো খবর নেই। বাম পাশ থেকে 'Fetch Latest News (AI)' বাটনে ক্লিক করুন।")
+        st.info("এখনো কোনো খবর নেই। বাম পাশ থেকে 'Fetch Latest News' বাটনে ক্লিক করুন।")
     else:
         items_per_page = 12
         total_pages = math.ceil(len(all_news) / items_per_page)
@@ -262,7 +210,8 @@ elif st.session_state.view == 'details':
     formatted_date = datetime.strptime(news[3], '%Y-%m-%d %H:%M:%S.%f').strftime('%B %d, %Y - %I:%M %p')
     img_html = f"""<div style="text-align: center; margin: 30px 0;"><img src="{news[1]}" style="max-width: 100%; width: 600px; height: auto; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.15);"></div>""" if news[1] else ""
     
-    article_html = f"""<div class="article-container">
+    article_html = f"""
+<div class="article-container">
 <h1 style='line-height: 1.4; color: {text_color}; text-align: center; margin-bottom: 15px; font-weight: 700;'>{news[0]}</h1>
 <p style='text-align: center; font-size: 15px; color: {meta_color};'>Category: <span class="category-badge" style="font-size: 15px;">{news[2]}</span> | Published: {formatted_date}</p>
 {img_html}
@@ -273,6 +222,7 @@ elif st.session_state.view == 'details':
 <div style="text-align: center;">
 <a href="{news[5]}" target="_blank" style="color: {accent_color}; text-decoration: none; font-weight: 600; font-size: 16px;">🔗 Read the original article on Al Jazeera</a>
 </div>
-</div>"""
+</div>
+"""
     
     st.markdown(article_html, unsafe_allow_html=True)
