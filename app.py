@@ -21,31 +21,28 @@ st.set_page_config(page_title="আন্তর্জাতিক সংবাদ
 # থিম এবং ফন্ট সেটআপ (বইয়ের পাতার রঙ)
 # ==========================================
 bg_color = "#FDF6E3"       
-text_color = "#2C2C2C"     
+text_color = "#111827"     # একদম গাঢ় কালো (পড়তে সুবিধা হবে)
 card_bg = "#FFFBF0"        
-meta_color = "#5D6D7E"     
+meta_color = "#4B5563"     # গাঢ় ছাই রঙ
 accent_color = "#D35400"   
 
 st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&display=swap');
-html, body, h1, h2, h3, h4, h5, h6, p, button, a {{ font-family: 'Hind Siliguri', sans-serif !important; }}
+html, body, h1, h2, h3, h4, h5, h6, p, button, a {{ font-family: 'Hind Siliguri', sans-serif !important; color: {text_color} !important; }}
 .stApp {{ background-color: {bg_color}; }}
-.news-card {{ background-color: {card_bg}; border-radius: 12px; overflow: hidden; height: 180px; margin-bottom: 12px; border: 1px solid #E5E0D5; box-shadow: 0 4px 6px rgba(0,0,0,0.02); }}
-.news-meta {{ color: {meta_color}; font-size: 13.5px; margin-top: 5px; margin-bottom: 10px; }}
-.category-badge {{ color: {accent_color}; font-weight: 700; text-transform: uppercase; }}
-.article-container {{ max-width: 850px; margin: 0 auto; background-color: {card_bg}; padding: 40px; border-radius: 16px; border: 1px solid #E5E0D5; box-shadow: 0 10px 25px rgba(0,0,0,0.03); }}
-.article-text p {{ font-size: 20px; line-height: 1.8; color: {text_color}; text-align: justify; margin-bottom: 18px; }}
-.audio-player {{ margin: 20px 0; padding: 15px; background-color: #F4F1EA; border-radius: 10px; text-align: center; border: 1px solid #E5E0D5; }}
+.news-card {{ background-color: {card_bg}; border-radius: 12px; overflow: hidden; height: 180px; margin-bottom: 12px; border: 1px solid #E5E0D5; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }}
+.news-meta {{ color: {meta_color} !important; font-size: 13.5px; margin-top: 5px; margin-bottom: 10px; font-weight: 600; }}
+.category-badge {{ color: {accent_color} !important; font-weight: 800; text-transform: uppercase; }}
 </style>
 """, unsafe_allow_html=True)
 
 def show_logo():
     st.markdown("""
-    <div style="text-align: center; margin-bottom: 30px; padding-top: 20px;">
-        <span style="font-family: 'Arial', sans-serif; font-size: 45px; font-weight: 900; color: #D35400;">আলজাজিরা</span>
-        <span style="font-family: 'Arial', sans-serif; font-size: 45px; font-weight: 300; color: #2C2C2C;"> বাংলা</span>
-        <br><span style="font-size: 16px; color: #5D6D7E; font-weight: 600;">এবং অন্যান্য আন্তর্জাতিক সংবাদ</span>
+    <div style="text-align: center; margin-bottom: 40px; padding-top: 20px;">
+        <span style="font-family: 'Arial', sans-serif; font-size: 48px; font-weight: 900; color: #D35400; letter-spacing: -1px;">আলজাজিরা</span>
+        <span style="font-family: 'Arial', sans-serif; font-size: 48px; font-weight: 300; color: #111827;"> বাংলা</span>
+        <br><span style="font-size: 17px; color: #4B5563; font-weight: 600; letter-spacing: 1px;">এবং অন্যান্য আন্তর্জাতিক সংবাদ</span>
     </div>
     """, unsafe_allow_html=True)
 
@@ -83,13 +80,12 @@ def safe_translate(text):
     except:
         return text 
 
-# --- 🔴 স্মার্ট ও ন্যাচারাল অডিও জেনারেটর (Edge TTS) ---
+# --- ন্যাচারাল অডিও জেনারেটর (Edge TTS) ---
 def generate_audio(text):
     clean_text = BeautifulSoup(text, "html.parser").get_text(separator=' ')
-    clean_text = clean_text[:4000] # লিমিট
+    clean_text = clean_text[:4000]
     
     try:
-        # মাইক্রোসফটের ন্যাচারাল ভয়েস (নবনীতা)
         async def _main():
             communicate = edge_tts.Communicate(clean_text, "bn-BD-NabanitaNeural")
             with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as fp:
@@ -103,11 +99,9 @@ def generate_audio(text):
         
         with open(audio_file, "rb") as f:
             audio_data = f.read()
-        os.remove(audio_file) # ক্লিনআপ
+        os.remove(audio_file)
         return audio_data
-        
     except Exception as e:
-        # কোনো কারণে ফেইল করলে আগের gTTS ব্যবহার করবে
         tts = gTTS(text=clean_text, lang='bn') 
         fp = io.BytesIO()
         tts.write_to_fp(fp)
@@ -132,7 +126,6 @@ def scrape_news():
                 title = entry.title
                 link = entry.link
                 
-                # 🔴 ডুপ্লিকেট চেকার: লিংক এবং টাইটেল দুটোই চেক করবে
                 c.execute("SELECT * FROM news_table WHERE link=? OR title=?", (link, title))
                 if not c.fetchone():
                     try:
@@ -255,14 +248,13 @@ if st.session_state.view == 'home':
                             st.rerun()
             st.write("")
 
-        # 🔴 পেজিনেশন মাঝখানে আনার ম্যাজিক
         st.write("---")
         if total_pages > 1:
-            spacer_ratio = 4 # ডানে-বামে বড় ফাঁকা জায়গা
+            spacer_ratio = 4
             page_cols = st.columns([spacer_ratio] + [1]*total_pages + [spacer_ratio])
             
             for p in range(1, total_pages + 1):
-                with page_cols[p]: # প্রথম কলামটি spacer, তাই p ইন্ডেক্সেই বাটন বসবে
+                with page_cols[p]:
                     btn_type = "primary" if p == st.session_state.page_num else "secondary"
                     if st.button(str(p), key=f"page_{p}", type=btn_type, use_container_width=True):
                         st.session_state.page_num = p
@@ -273,7 +265,8 @@ elif st.session_state.view == 'details':
     c.execute("SELECT translated_title, image_url, source, date, full_text, link FROM news_table WHERE id=?", (st.session_state.selected_news_id,))
     news = c.fetchone()
     
-    col_back, _ = st.columns([1, 5])
+    # টপ বার (ব্যাক বাটন)
+    col_back, _ = st.columns([1, 6])
     with col_back:
         if st.button("⬅️ হোম পেজে যান", use_container_width=True):
             st.session_state.view = 'home'
@@ -281,32 +274,44 @@ elif st.session_state.view == 'details':
     
     st.write("")
     formatted_date = datetime.strptime(news[3], '%Y-%m-%d %H:%M:%S.%f').strftime('%B %d, %Y - %I:%M %p')
+    img_html = f"""<div style="text-align: center; margin: 30px 0;"><img src="{news[1]}" style="max-width: 100%; width: 100%; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);"></div>""" if news[1] else ""
     
-    st.markdown('<div class="audio-player">', unsafe_allow_html=True)
-    if st.button("🎧 সংবাদটি শুনুন (Smart AI Voice)"):
-        with st.spinner("ন্যাচারাল অডিও তৈরি হচ্ছে, একটু অপেক্ষা করুন..."):
-            try:
-                audio_bytes = generate_audio(news[4])
-                st.audio(audio_bytes, format='audio/mp3')
-            except Exception as e:
-                st.error("অডিও তৈরি করতে সমস্যা হয়েছে।")
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    img_html = f"""<div style="text-align: center; margin: 30px 0;"><img src="{news[1]}" style="max-width: 100%; width: 600px; height: auto; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.15);"></div>""" if news[1] else ""
-    
+    # 🔴 সম্পূর্ণ নতুন এবং হাই-কন্ট্রাস্ট ডিজাইনের আর্টিকেল কন্টেইনার
     article_html = f"""
-    <div class="article-container">
-        <h1 style='line-height: 1.4; color: {text_color}; text-align: center; margin-bottom: 15px; font-weight: 700;'>{news[0]}</h1>
-        <p style='text-align: center; font-size: 15px; color: {meta_color};'>Source: <span class="category-badge" style="font-size: 15px;">{news[2]}</span> | Published: {formatted_date}</p>
+    <div style="background-color: #FFFBF0; padding: 50px; border-radius: 16px; border: 1px solid #E5E0D5; box-shadow: 0 10px 25px rgba(0,0,0,0.05); max-width: 850px; margin: 0 auto;">
+        
+        <h1 style='line-height: 1.5; color: #000000 !important; text-align: center; margin-bottom: 20px; font-weight: 800; font-size: 34px;'>{news[0]}</h1>
+        
+        <p style='text-align: center; font-size: 16px; color: #555555 !important; font-weight: 500; border-bottom: 1px solid #E5E0D5; padding-bottom: 25px;'>
+            সোর্স: <span style="color: #D35400; font-weight: 800; text-transform: uppercase;">{news[2]}</span> &nbsp;|&nbsp; প্রকাশ: {formatted_date}
+        </p>
+        
         {img_html}
-        <div class="article-text">
+        
+        <div style="color: #1A1A1A !important; font-size: 21px; line-height: 1.9; text-align: justify; margin-top: 30px; font-weight: 400;">
             {news[4]}
         </div>
-        <hr style="border-top: 1px solid #E5E0D5; margin-top: 40px; margin-bottom: 20px;">
+        
+        <hr style="border-top: 2px dashed #E5E0D5; margin-top: 50px; margin-bottom: 30px;">
+        
         <div style="text-align: center;">
-            <a href="{news[5]}" target="_blank" style="color: {accent_color}; text-decoration: none; font-weight: 600; font-size: 16px;">🔗 মূল ইংরেজি খবরটি পড়ুন</a>
+            <a href="{news[5]}" target="_blank" style="background-color: #D35400; color: #FFFFFF !important; padding: 12px 25px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 18px; display: inline-block; box-shadow: 0 4px 6px rgba(211,84,0,0.3);">🔗 মূল ইংরেজি খবরটি পড়ুন</a>
         </div>
+        
     </div>
     """
     
+    # 🔴 অডিও বাটনটি একদম মাঝখানে সুন্দরভাবে বসানো হয়েছে
+    st.write("")
+    col_audio1, col_audio2, col_audio3 = st.columns([1, 2, 1])
+    with col_audio2:
+        if st.button("🎧 সংবাদটি বাংলায় শুনুন (Smart Voice)", use_container_width=True):
+            with st.spinner("ন্যাচারাল অডিও তৈরি হচ্ছে, একটু অপেক্ষা করুন..."):
+                try:
+                    audio_bytes = generate_audio(news[4])
+                    st.audio(audio_bytes, format='audio/mp3')
+                except Exception as e:
+                    st.error("অডিও তৈরি করতে সমস্যা হয়েছে।")
+    
+    st.write("")
     st.markdown(article_html, unsafe_allow_html=True)
