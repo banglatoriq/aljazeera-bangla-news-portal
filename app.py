@@ -45,6 +45,7 @@ html, body, [class*="css"] {{ font-family: 'Hind Siliguri', sans-serif !importan
     display: block;
     object-fit: contain;
 }}
+p{color:#000000 !important}
 
 /* নিউজ মেটা তথ্য */
 .news-meta {{ color: #4B5563 !important; font-size: 13px; margin-top: 8px; font-weight: 600; }}
