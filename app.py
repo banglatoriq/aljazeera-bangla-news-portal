@@ -18,22 +18,26 @@ import os
 st.set_page_config(page_title="আন্তর্জাতিক সংবাদ - বাংলা", page_icon="📰", layout="wide")
 
 # ==========================================
-# থিম এবং ফন্ট সেটআপ (বইয়ের পাতার রঙ)
+# থিম এবং ফন্ট সেটআপ (স্থায়ী সমাধান)
 # ==========================================
 bg_color = "#FDF6E3"       
-text_color = "#111827"     # একদম গাঢ় কালো (পড়তে সুবিধা হবে)
 card_bg = "#FFFBF0"        
-meta_color = "#4B5563"     # গাঢ় ছাই রঙ
-accent_color = "#D35400"   
 
 st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&display=swap');
-html, body, h1, h2, h3, h4, h5, h6, p, button, a {{ font-family: 'Hind Siliguri', sans-serif !important; color: {text_color} !important; }}
+html, body, [class*="css"] {{ font-family: 'Hind Siliguri', sans-serif !important; }}
 .stApp {{ background-color: {bg_color}; }}
-.news-card {{ background-color: {card_bg}; border-radius: 12px; overflow: hidden; height: 180px; margin-bottom: 12px; border: 1px solid #E5E0D5; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }}
-.news-meta {{ color: {meta_color} !important; font-size: 13.5px; margin-top: 5px; margin-bottom: 10px; font-weight: 600; }}
-.category-badge {{ color: {accent_color} !important; font-weight: 800; text-transform: uppercase; }}
+.news-card {{ background-color: {card_bg}; border-radius: 12px; overflow: hidden; height: 180px; margin-bottom: 12px; border: 1px solid #E5E0D5; box-shadow: 0 4px 6px rgba(0,0,0,0.05); padding: 15px; }}
+.news-meta {{ color: #4B5563; font-size: 13.5px; margin-top: 5px; margin-bottom: 10px; font-weight: 600; }}
+.category-badge {{ color: #D35400; font-weight: 800; text-transform: uppercase; }}
+
+/* বাটনের অদৃশ্য লেখার স্থায়ী সমাধান */
+.stButton > button {{ background-color: #FFFFFF !important; color: #111827 !important; border: 1px solid #D1D5DB !important; font-weight: 600 !important; }}
+.stButton > button:hover {{ border-color: #D35400 !important; color: #D35400 !important; }}
+
+/* কার্ডের ভেতরের টাইটেল */
+.news-card-title {{ font-size: 18px; font-weight: 700; color: #111827; line-height: 1.4; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -80,7 +84,7 @@ def safe_translate(text):
     except:
         return text 
 
-# --- ন্যাচারাল অডিও জেনারেটর (Edge TTS) ---
+# --- ন্যাচারাল অডিও জেনারেটর ---
 def generate_audio(text):
     clean_text = BeautifulSoup(text, "html.parser").get_text(separator=' ')
     clean_text = clean_text[:4000]
@@ -107,7 +111,7 @@ def generate_audio(text):
         tts.write_to_fp(fp)
         return fp.getvalue()
 
-# --- স্বয়ংক্রিয় স্ক্র্যাপিং ---
+# --- স্ক্র্যাপিং লজিক ---
 def scrape_news():
     news_feeds = {
         "Al Jazeera": "https://www.aljazeera.com/xml/rss/all.xml",
@@ -239,7 +243,7 @@ if st.session_state.view == 'home':
                 if i+j < len(current_news):
                     n = current_news[i+j]
                     with cols[j]:
-                        st.markdown(f'<div class="news-card"><img src="{n[2]}" style="width:100%;height:100%;object-fit:cover;"></div>', unsafe_allow_html=True)
+                        st.markdown(f'<div style="height: 150px; overflow: hidden; border-radius: 8px; margin-bottom: 10px;"><img src="{n[2]}" style="width:100%;height:100%;object-fit:cover;"></div>', unsafe_allow_html=True)
                         formatted_date = datetime.strptime(n[4], '%Y-%m-%d %H:%M:%S.%f').strftime('%b %d, %Y')
                         st.markdown(f"<div class='news-meta'><span class='category-badge'>{n[3]}</span> | {formatted_date}</div>", unsafe_allow_html=True)
                         if st.button(n[1], key=f"btn_{n[0]}", use_container_width=True):
@@ -265,7 +269,6 @@ elif st.session_state.view == 'details':
     c.execute("SELECT translated_title, image_url, source, date, full_text, link FROM news_table WHERE id=?", (st.session_state.selected_news_id,))
     news = c.fetchone()
     
-    # টপ বার (ব্যাক বাটন)
     col_back, _ = st.columns([1, 6])
     with col_back:
         if st.button("⬅️ হোম পেজে যান", use_container_width=True):
@@ -276,32 +279,16 @@ elif st.session_state.view == 'details':
     formatted_date = datetime.strptime(news[3], '%Y-%m-%d %H:%M:%S.%f').strftime('%B %d, %Y - %I:%M %p')
     img_html = f"""<div style="text-align: center; margin: 30px 0;"><img src="{news[1]}" style="max-width: 100%; width: 100%; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1);"></div>""" if news[1] else ""
     
-    # 🔴 সম্পূর্ণ নতুন এবং হাই-কন্ট্রাস্ট ডিজাইনের আর্টিকেল কন্টেইনার
-    article_html = f"""
-    <div style="background-color: #FFFBF0; padding: 50px; border-radius: 16px; border: 1px solid #E5E0D5; box-shadow: 0 10px 25px rgba(0,0,0,0.05); max-width: 850px; margin: 0 auto;">
-        
-        <h1 style='line-height: 1.5; color: #000000 !important; text-align: center; margin-bottom: 20px; font-weight: 800; font-size: 34px;'>{news[0]}</h1>
-        
-        <p style='text-align: center; font-size: 16px; color: #555555 !important; font-weight: 500; border-bottom: 1px solid #E5E0D5; padding-bottom: 25px;'>
-            সোর্স: <span style="color: #D35400; font-weight: 800; text-transform: uppercase;">{news[2]}</span> &nbsp;|&nbsp; প্রকাশ: {formatted_date}
-        </p>
-        
-        {img_html}
-        
-        <div style="color: #1A1A1A !important; font-size: 21px; line-height: 1.9; text-align: justify; margin-top: 30px; font-weight: 400;">
-            {news[4]}
-        </div>
-        
-        <hr style="border-top: 2px dashed #E5E0D5; margin-top: 50px; margin-bottom: 30px;">
-        
-        <div style="text-align: center;">
-            <a href="{news[5]}" target="_blank" style="background-color: #D35400; color: #FFFFFF !important; padding: 12px 25px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 18px; display: inline-block; box-shadow: 0 4px 6px rgba(211,84,0,0.3);">🔗 মূল ইংরেজি খবরটি পড়ুন</a>
-        </div>
-        
-    </div>
-    """
+# 🔴 কোড ব্লক এরানোর জন্য কোনো স্পেস রাখা হয়নি
+    article_html = f"""<div style="background-color: #FFFBF0; padding: 40px; border-radius: 16px; border: 1px solid #E5E0D5; box-shadow: 0 10px 25px rgba(0,0,0,0.05); max-width: 850px; margin: 0 auto;">
+<h1 style='line-height: 1.4; color: #111827; text-align: center; margin-bottom: 15px; font-weight: 800; font-size: 32px;'>{news[0]}</h1>
+<p style='text-align: center; font-size: 15px; color: #4B5563; font-weight: 600; border-bottom: 1px solid #E5E0D5; padding-bottom: 20px;'>সোর্স: <span style="color: #D35400; text-transform: uppercase;">{news[2]}</span> &nbsp;|&nbsp; প্রকাশ: {formatted_date}</p>
+{img_html}
+<div style="color: #111827; font-size: 20px; line-height: 1.8; text-align: justify; margin-top: 25px;">{news[4]}</div>
+<hr style="border-top: 2px dashed #E5E0D5; margin-top: 40px; margin-bottom: 30px;">
+<div style="text-align: center;"><a href="{news[5]}" target="_blank" style="background-color: #D35400; color: #FFFFFF !important; padding: 12px 25px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 18px; display: inline-block;">🔗 মূল ইংরেজি খবরটি পড়ুন</a></div>
+</div>"""
     
-    # 🔴 অডিও বাটনটি একদম মাঝখানে সুন্দরভাবে বসানো হয়েছে
     st.write("")
     col_audio1, col_audio2, col_audio3 = st.columns([1, 2, 1])
     with col_audio2:
