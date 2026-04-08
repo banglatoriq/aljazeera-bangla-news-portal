@@ -1,5 +1,6 @@
 import streamlit as st
 import sqlite3
+import math  # 🔴 এই লাইনটি আগেরবার মিসিং ছিল!
 from datetime import datetime, timedelta
 import requests
 from bs4 import BeautifulSoup
@@ -16,7 +17,7 @@ st.set_page_config(page_title="আন্তর্জাতিক সংবাদ
 # থিম এবং ফন্ট সেটআপ (চোখের আরামদায়ক বইয়ের পাতার রঙ)
 # ==========================================
 bg_color = "#FDF6E3"       # বইয়ের পাতার মতো হলদেটে রঙ
-text_color = "#2C2C2C"     # গাঢ় ছাই/কালো রঙ (চোখের ক্ষতি কমায়)
+text_color = "#2C2C2C"     # গাঢ় ছাই/কালো রঙ
 card_bg = "#FFFBF0"        # খবরের কার্ডের রঙ
 meta_color = "#5D6D7E"     # তারিখ বা ক্যাটাগরির রঙ
 accent_color = "#D35400"   # আলজাজিরার মতো কমলা/সোনালী রঙ
@@ -64,7 +65,6 @@ def safe_translate(text):
     if not text: return ""
     try:
         translator = GoogleTranslator(source='en', target='bn')
-        # লেখা খুব বড় হলে গুগলে এরর আসতে পারে, তাই ভেঙে ভেঙে অনুবাদ
         if len(text) > 3000:
             chunks = text.split('. ')
             translated_chunks = []
@@ -73,18 +73,17 @@ def safe_translate(text):
                     try:
                         translated_chunks.append(translator.translate(chunk.strip()))
                     except:
-                        translated_chunks.append(chunk) # অনুবাদ ফেইল করলে ইংরেজিটাই রেখে দিবে
+                        translated_chunks.append(chunk) 
             return "। ".join(translated_chunks)
         else:
             return translator.translate(text)
     except:
-        return text # মূল এরর হলে পুরো ইংরেজিটাই রেখে দিবে, যাতে খবর হারানো না যায়
+        return text 
 
 # --- অডিও জেনারেটর (Text to Speech) ---
 def generate_audio(text):
-    # HTML ট্যাগগুলো সরিয়ে শুধু পরিষ্কার টেক্সট নেওয়া
     clean_text = BeautifulSoup(text, "html.parser").get_text(separator=' ')
-    tts = gTTS(text=clean_text[:4500], lang='bn') # অডিও সাইজ লিমিটেশন এড়াতে প্রথম ৪৫০০ অক্ষর
+    tts = gTTS(text=clean_text[:4500], lang='bn') 
     fp = io.BytesIO()
     tts.write_to_fp(fp)
     return fp.getvalue()
@@ -104,7 +103,6 @@ def scrape_news():
     for source_name, feed_url in news_feeds.items():
         try:
             feed = feedparser.parse(feed_url)
-            # প্রতি সোর্স থেকে সর্বশেষ ৩টি খবর নেওয়া হচ্ছে যাতে সাইট স্লো না হয়
             for entry in feed.entries[:3]:
                 title = entry.title
                 link = entry.link
@@ -127,9 +125,8 @@ def scrape_news():
                             
                         bn_title = safe_translate(title)
                         
-                        # প্যারাগ্রাফ ধরে ধরে অনুবাদ করা
                         bn_full_text = ""
-                        for p in full_eng_text.split('\n\n')[:12]: # প্রথম ১২টি প্যারাগ্রাফ
+                        for p in full_eng_text.split('\n\n')[:12]: 
                             if p.strip():
                                 trans_p = safe_translate(p.strip())
                                 bn_full_text += f"<p>{trans_p}</p>"
@@ -162,7 +159,7 @@ def check_for_auto_update():
         should_update = True
     else:
         last_update = datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S.%f')
-        if datetime.now() - last_update > timedelta(hours=2): # প্রতি ২ ঘণ্টা পর পর অটো আপডেট
+        if datetime.now() - last_update > timedelta(hours=2): 
             should_update = True
             
     if should_update:
