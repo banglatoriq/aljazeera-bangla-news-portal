@@ -3,4 +3,5 @@ requests
 beautifulsoup4
 deep-translator
 gTTS
+edge-tts
 feedparser
