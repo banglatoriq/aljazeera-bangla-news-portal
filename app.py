@@ -89,7 +89,7 @@ p{{color:#000000 !important}}
 def show_logo():
     st.markdown("""
     <div style="text-align: center; margin-bottom: 40px; padding-top: 20px;">
-        <span style="font-family: 'Arial', sans-serif; font-size: 48px; font-weight: 900; color: #D35400;">আলজাজিরা</span>
+        <span style="font-family: 'Arial', sans-serif; font-size: 48px; font-weight: 900; color: #D35400;">হাওয়া</span>
         <span style="font-family: 'Arial', sans-serif; font-size: 48px; font-weight: 300; color: #111827;"> বাংলা</span>
         <br><span style="font-size: 17px; color: #4B5563; font-weight: 600;">এবং অন্যান্য আন্তর্জাতিক সংবাদ</span>
     </div>
