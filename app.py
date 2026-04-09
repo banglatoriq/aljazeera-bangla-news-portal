@@ -47,6 +47,13 @@ html, body, [class*="css"] {{ font-family: 'Hind Siliguri', sans-serif !importan
 }}
 p{{color:#000000 !important}}
 
+/* এই কোডটি Streamlit-এর ডিফল্ট কোডকে ওভাররাইড (Override) করবে */
+.stButton > button {{ 
+    font-family: 'Hind Siliguri', sans-serif !important; 
+    font-size: 18px !important; 
+    font-weight: 600 !important;
+}}
+
 /* নিউজ মেটা তথ্য */
 .news-meta {{ color: #4B5563 !important; font-size: 13px; margin-top: 8px; font-weight: 600; }}
 .category-badge {{ color: {accent_color} !important; font-weight: 800; }}
