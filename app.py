@@ -28,7 +28,7 @@ accent_color = "#D35400"
 
 # ফন্ট সাইজ স্টেট (নতুন ফিচার)
 if 'font_size' not in st.session_state:
-    st.session_state.font_size = 21
+    st.session_state.font_size = 20
 
 st.markdown(f"""
 <style>
