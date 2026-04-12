@@ -14,6 +14,8 @@ import tempfile
 import time
 import os
 import urllib.parse
+import re
+import streamlit.components.v1 as components
 
 # --- পেইজ সেটআপ ---
 st.set_page_config(page_title="আন্তর্জাতিক সংবাদ - বাংলা", page_icon="📰", layout="wide")
@@ -26,7 +28,6 @@ card_bg = "#FFFBF0"
 text_color = "#111827"
 accent_color = "#D35400"
 
-# ফন্ট সাইজ স্টেট (নতুন ফিচার)
 if 'font_size' not in st.session_state:
     st.session_state.font_size = 20
 
@@ -41,36 +42,19 @@ html, body, [class*="css"] {{ font-family: 'Hind Siliguri', sans-serif !importan
 p {{ color: #000000 !important; font-family: 'Hind Siliguri', sans-serif !important; }}
 
 .stButton > button {{ 
-    background-color: transparent !important; 
-    color: #111827 !important; 
-    border: none !important; 
-    font-family: 'Hind Siliguri', sans-serif !important; 
-    font-size: 18px !important; 
-    font-weight: 600 !important;
-    text-align: left !important;
-    line-height: 1.4 !important;
-    padding: 0 !important;
-    white-space: normal !important;
-    display: block !important;
+    background-color: transparent !important; color: #111827 !important; border: none !important; 
+    font-family: 'Hind Siliguri', sans-serif !important; font-size: 18px !important; font-weight: 600 !important;
+    text-align: left !important; line-height: 1.4 !important; padding: 0 !important; white-space: normal !important; display: block !important;
 }}
-
 .stButton > button:hover {{ color: {accent_color} !important; }}
 .article-title {{ line-height: 1.3; color: #000000 !important; text-align: center; margin-bottom: 10px; font-weight: 800; font-size: 36px; }}
 
-.share-btn {{
-    display: inline-flex; align-items: center; justify-content: center;
-    padding: 8px 15px; border-radius: 5px; color: white !important;
-    text-decoration: none; font-size: 14px; font-weight: 600; margin-right: 10px;
-}}
+.share-btn {{ display: inline-flex; align-items: center; justify-content: center; padding: 8px 15px; border-radius: 5px; color: white !important; text-decoration: none; font-size: 14px; font-weight: 600; margin-right: 10px; }}
 .fb {{ background-color: #1877F2; }}
 .wa {{ background-color: #25D366; }}
 
-/* রিড টাইম ব্যাজ স্টাইল */
-.read-time-badge {{
-    background-color: #E5E0D5; color: #4B5563; padding: 4px 12px;
-    border-radius: 20px; font-size: 14px; font-weight: 600; display: inline-block;
-    margin-bottom: 20px;
-}}
+.read-time-badge {{ background-color: #E5E0D5; color: #4B5563; padding: 4px 12px; border-radius: 20px; font-size: 14px; font-weight: 600; display: inline-block; margin-bottom: 20px; }}
+.content-box {{ background-color: #FFFBF0; padding: 30px; border-radius: 16px; border: 1px solid #E5E0D5; margin-bottom: 20px; max-width: 850px; margin-left: auto; margin-right: auto; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -83,10 +67,9 @@ def show_logo():
     </div>
     """, unsafe_allow_html=True)
 
-# --- ডাটাবেস সেটআপ ---
 @st.cache_resource
 def init_db():
-    conn = sqlite3.connect('news_db_free_v8.db', check_same_thread=False, timeout=30)
+    conn = sqlite3.connect('news_db_free_v9.db', check_same_thread=False, timeout=30)
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS news_table
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, link TEXT, translated_title TEXT, 
@@ -97,7 +80,6 @@ def init_db():
 
 conn, c = init_db()
 
-# --- ফ্রি অনুবাদ ফাংশন ---
 def safe_translate(text):
     if not text: return ""
     try:
@@ -110,7 +92,6 @@ def safe_translate(text):
     except:
         return text
 
-# --- অডিও জেনারেটর ---
 def generate_audio(text):
     clean_text = BeautifulSoup(text, "html.parser").get_text(separator=' ')[:4000]
     try:
@@ -123,14 +104,11 @@ def generate_audio(text):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         audio_file = loop.run_until_complete(_main())
-        with open(audio_file, "rb") as f:
-            audio_data = f.read()
+        with open(audio_file, "rb") as f: audio_data = f.read()
         os.remove(audio_file)
         return audio_data
-    except:
-        return None
+    except: return None
 
-# --- স্ক্র্যাপিং লজিক ---
 def scrape_news():
     news_feeds = {
         "Al Jazeera": "https://www.aljazeera.com/xml/rss/all.xml",
@@ -150,10 +128,24 @@ def scrape_news():
                         art_soup = BeautifulSoup(art_resp.content, 'html.parser')
                         img = art_soup.find('meta', property='og:image')['content'] if art_soup.find('meta', property='og:image') else ""
                         
+                        # 🔴 ভিডিও এবং টুইট লিঙ্ক খোঁজার উন্নত পদ্ধতি (সাদা বক্স বন্ধ করার জন্য)
                         video_link = None
-                        iframe = art_soup.find('iframe')
-                        if iframe and iframe.get('src'):
-                            video_link = iframe.get('src')
+                        
+                        # ১. প্রথমে বৈধ ভিডিও আইফ্রেম খুঁজবে
+                        for iframe in art_soup.find_all('iframe'):
+                            src = iframe.get('src', '')
+                            # শুধুমাত্র আসল ভিডিও প্ল্যাটফর্ম হলে নিবে (এডস বা ট্র্যাকার বাদ)
+                            if any(platform in src for platform in ['youtube', 'vimeo', 'dailymotion', 'rt.com']):
+                                if src.startswith('//'): src = 'https:' + src
+                                video_link = src
+                                break
+                        
+                        # ২. ভিডিও না পেলে টুইটারের এমবেড খুঁজবে
+                        if not video_link:
+                            tweet = art_soup.find('blockquote', class_='twitter-tweet')
+                            if tweet:
+                                a_tags = tweet.find_all('a')
+                                if a_tags: video_link = a_tags[-1].get('href') # টুইটের লিংক নিবে
                         
                         paragraphs = art_soup.find_all('p')
                         full_eng_text = "\n\n".join([p.text.strip() for p in paragraphs if len(p.text.split()) > 10])
@@ -168,7 +160,6 @@ def scrape_news():
                         conn.commit()
                     except: continue
         except: continue
-    
     try:
         c.execute("DELETE FROM update_meta")
         c.execute("INSERT INTO update_meta (last_update) VALUES (?)", (datetime.now(),))
@@ -188,7 +179,6 @@ check_for_auto_update()
 # ==========================================
 # Frontend UI
 # ==========================================
-
 if 'view' not in st.session_state: st.session_state.view = 'home'
 if 'page_num' not in st.session_state: st.session_state.page_num = 1
 
@@ -222,21 +212,14 @@ elif st.session_state.view == 'details':
     c.execute("SELECT translated_title, image_url, source, date, full_text, link, video_url FROM news_table WHERE id=?", (st.session_state.selected_news_id,))
     news = c.fetchone()
     
-    # টপ বার (হোম বাটন এবং ফন্ট সাইজ কন্ট্রোলার)
     t1, t2, t3 = st.columns([1, 2, 1])
     with t1:
         if st.button("⬅️ হোম পেজে যান"):
             st.session_state.view = 'home'
             st.rerun()
     with t2:
-        # নতুন ফিচার: ফন্ট সাইজ পরিবর্তন
-        st.session_state.font_size = st.select_slider(
-            "📖 পড়ার সুবিধার্থে ফন্ট সাইজ:",
-            options=[18, 20, 22, 24, 26, 28],
-            value=st.session_state.font_size
-        )
+        st.session_state.font_size = st.select_slider("📖 ফন্ট সাইজ:", options=[18, 20, 22, 24, 26], value=st.session_state.font_size)
 
-    # অডিও বাটন
     col_a1, col_a2, col_a3 = st.columns([1, 2, 1])
     with col_a2:
         if st.button("🎧 সংবাদটি বাংলায় শুনুন", use_container_width=True):
@@ -244,7 +227,6 @@ elif st.session_state.view == 'details':
                 audio = generate_audio(news[4])
                 if audio: st.audio(audio)
 
-    # সোশ্যাল শেয়ার
     encoded_title = urllib.parse.quote(news[0])
     st.markdown(f"""
         <div style="text-align: center; margin: 20px 0;">
@@ -253,52 +235,54 @@ elif st.session_state.view == 'details':
         </div>
     """, unsafe_allow_html=True)
 
-    # মূল কন্টেইনার
-    st.markdown('<div style="background-color: #FFFBF0; padding: 40px; border-radius: 16px; border: 1px solid #E5E0D5; max-width: 850px; margin: 0 auto;">', unsafe_allow_html=True)
-
-    # রিড টাইম হিসাব করা (নতুন ফিচার)
     word_count = len(BeautifulSoup(news[4], "html.parser").get_text().split())
-    read_time = max(1, word_count // 150) # ১৫০ শব্দ প্রতি মিনিটে
+    read_time = max(1, word_count // 150)
 
-    # নিউজ টাইটেল, রিড টাইম, মেটা এবং ছবি
+    # 🔴 পার্ট ১: টাইটেল এবং প্রথম ছবি
     st.markdown(f"""
-        <div style="text-align: center; margin-bottom: 20px;">
-            <h1 class="article-title">{news[0]}</h1>
-            <div class="read-time-badge">⏱️ পড়তে সময় লাগবে প্রায় {read_time} মিনিট</div>
-            <p style='color: #4B5563; font-weight: 600;'>সোর্স: {news[2]} | {news[3][:10]}</p>
-            <div style="text-align: center; margin: 30px 0;"><img src="{news[1]}" style="max-width: 100%; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05);"></div>
+        <div class="content-box">
+            <div style="text-align: center;">
+                <h1 class="article-title">{news[0]}</h1>
+                <div class="read-time-badge">⏱️ পড়তে সময় লাগবে প্রায় {read_time} মিনিট</div>
+                <p style='color: #4B5563; font-weight: 600;'>সোর্স: {news[2]} | {news[3][:10]}</p>
+                <img src="{news[1]}" style="width: 100%; border-radius: 12px; margin-top: 15px;">
+            </div>
         </div>
     """, unsafe_allow_html=True)
 
-    # প্যারাগ্রাফ ভাগ করা
     paragraphs = [p for p in news[4].split('</p>') if p.strip()]
     
-    # প্রথম প্যারাগ্রাফ
+    # 🔴 পার্ট ২: প্রথম প্যারাগ্রাফ
     if len(paragraphs) > 0:
-        st.markdown(f'<div style="color: #111827; font-size: {st.session_state.font_size}px; line-height: 1.8; text-align: justify;">{paragraphs[0]}</p></div>', unsafe_allow_html=True)
+        # টুইটার লিংক ফিক্স করা (যদি টেক্সটের ভেতর pic.twitter থাকে)
+        para1 = re.sub(r'(pic\.twitter\.com/\w+)', r'<a href="https://\1" target="_blank" style="color:#1DA1F2;">\1</a>', paragraphs[0])
+        st.markdown(f'<div class="content-box" style="font-size: {st.session_state.font_size}px; line-height: 1.8; text-align: justify;">{para1}</p></div>', unsafe_allow_html=True)
 
-    # প্রথম প্যারার পর ভিডিও
-    if news[6]:
-        col_vid1, col_vid2, col_vid3 = st.columns([1, 10, 1])
+    # 🔴 পার্ট ৩: ভিডিও বা টুইট এমবেড (HTML ব্রেক ছাড়া, তাই আর সাদা বক্স আসবে না)
+    if news[6] and news[6].startswith('http'):
+        st.markdown("<br>", unsafe_allow_html=True)
+        col_vid1, col_vid2, col_vid3 = st.columns([1, 6, 1])
         with col_vid2:
-            if "youtube" in news[6] or "vimeo" in news[6]:
+            if 'twitter.com' in news[6]:
+                # টুইটার আসল এমবেড
+                tweet_html = f'''<blockquote class="twitter-tweet" data-theme="light"><a href="{news[6]}"></a></blockquote> <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>'''
+                components.html(tweet_html, height=500, scrolling=True)
+            elif "youtube" in news[6] or "vimeo" in news[6]:
                 st.video(news[6])
             else:
-                st.markdown(f'''
-                    <div style="display: flex; justify-content: center; margin: 20px 0;">
-                        <iframe src="{news[6]}" width="100%" height="350" frameborder="0" style="border-radius: 12px;"></iframe>
-                    </div>
-                ''', unsafe_allow_html=True)
+                st.markdown(f'<iframe src="{news[6]}" width="100%" height="400" frameborder="0" style="border-radius: 12px;"></iframe>', unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
 
-    # বাকি নিউজ প্যারাগ্রাফ
+    # 🔴 পার্ট ৪: বাকি নিউজ এবং সোর্স লিঙ্ক
     if len(paragraphs) > 1:
         rest_of_news = "</p>".join(paragraphs[1:]) + "</p>"
-        st.markdown(f'<div style="color: #111827; font-size: {st.session_state.font_size}px; line-height: 1.8; text-align: justify;">{rest_of_news}</div>', unsafe_allow_html=True)
-
-    # মূল খবরের লিঙ্ক
-    st.markdown(f"""
-        <hr style="border-top: 2px dashed #E5E0D5; margin-top: 40px;">
-        <center><a href="{news[5]}" target="_blank" style="color: #D35400; font-weight: 700; text-decoration: none; font-size: 18px;">🔗 মূল ইংরেজি খবরটি পড়ুন</a></center>
-    """, unsafe_allow_html=True)
-
-    st.markdown('</div>', unsafe_allow_html=True) # কন্টেইনার শেষ
+        # টেক্সটের ভেতরের টুইটার লিংক ফিক্স
+        rest_of_news = re.sub(r'(pic\.twitter\.com/\w+)', r'<a href="https://\1" target="_blank" style="color:#1DA1F2;">\1 (টুইটটি দেখুন)</a>', rest_of_news)
+        
+        st.markdown(f'''
+            <div class="content-box" style="font-size: {st.session_state.font_size}px; line-height: 1.8; text-align: justify;">
+                {rest_of_news}
+                <hr style="border-top: 2px dashed #E5E0D5; margin-top: 30px;">
+                <center><a href="{news[5]}" target="_blank" style="color: #D35400; font-weight: 700; text-decoration: none; font-size: 18px;">🔗 মূল ইংরেজি খবরটি পড়ুন</a></center>
+            </div>
+        ''', unsafe_allow_html=True)
