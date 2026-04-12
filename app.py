@@ -41,18 +41,28 @@ html, body, [class*="css"] {{ font-family: 'Hind Siliguri', sans-serif !importan
 .news-image-container img {{ width: 100%; height: auto; display: block; object-fit: contain; }}
 p {{ color: #000000 !important; font-family: 'Hind Siliguri', sans-serif !important; }}
 
-.stButton > button {{ 
-    background-color: transparent !important; color: #111827 !important; border: none !important; 
-    font-family: 'Hind Siliguri', sans-serif !important; font-size: 18px !important; font-weight: 600 !important;
-    text-align: left !important; line-height: 1.4 !important; padding: 0 !important; white-space: normal !important; display: block !important;
+/* 🔴 টাইটেল বাটন থেকে বর্ডার রিমুভ করার চূড়ান্ত ফিক্স */
+.stButton > button, div[data-testid="stButton"] > button {{ 
+    background-color: transparent !important; 
+    color: #111827 !important; 
+    border: none !important; 
+    box-shadow: none !important; 
+    outline: none !important;
+    font-family: 'Hind Siliguri', sans-serif !important; 
+    font-size: 18px !important; 
+    font-weight: 600 !important;
+    text-align: left !important; 
+    line-height: 1.4 !important; 
+    padding: 0 !important; 
+    white-space: normal !important; 
+    display: block !important;
 }}
-.stButton > button:hover {{ color: {accent_color} !important; }}
-.article-title {{ line-height: 1.3; color: #000000 !important; text-align: center; margin-bottom: 10px; font-weight: 800; font-size: 36px; }}
+.stButton > button:hover, div[data-testid="stButton"] > button:hover {{ color: {accent_color} !important; background-color: transparent !important; border: none !important; box-shadow: none !important; }}
 
+.article-title {{ line-height: 1.3; color: #000000 !important; text-align: center; margin-bottom: 10px; font-weight: 800; font-size: 36px; }}
 .share-btn {{ display: inline-flex; align-items: center; justify-content: center; padding: 8px 15px; border-radius: 5px; color: white !important; text-decoration: none; font-size: 14px; font-weight: 600; margin-right: 10px; }}
 .fb {{ background-color: #1877F2; }}
 .wa {{ background-color: #25D366; }}
-
 .read-time-badge {{ background-color: #E5E0D5; color: #4B5563; padding: 4px 12px; border-radius: 20px; font-size: 14px; font-weight: 600; display: inline-block; margin-bottom: 20px; }}
 .content-box {{ background-color: #FFFBF0; padding: 30px; border-radius: 16px; border: 1px solid #E5E0D5; margin-bottom: 20px; max-width: 850px; margin-left: auto; margin-right: auto; }}
 </style>
@@ -69,7 +79,7 @@ def show_logo():
 
 @st.cache_resource
 def init_db():
-    conn = sqlite3.connect('news_db_free_v9.db', check_same_thread=False, timeout=30)
+    conn = sqlite3.connect('news_db_free_v10.db', check_same_thread=False, timeout=30)
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS news_table
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, link TEXT, translated_title TEXT, 
@@ -128,24 +138,33 @@ def scrape_news():
                         art_soup = BeautifulSoup(art_resp.content, 'html.parser')
                         img = art_soup.find('meta', property='og:image')['content'] if art_soup.find('meta', property='og:image') else ""
                         
-                        # 🔴 ভিডিও এবং টুইট লিঙ্ক খোঁজার উন্নত পদ্ধতি (সাদা বক্স বন্ধ করার জন্য)
+                        # 🔴 উন্নত ভিডিও এবং টুইট স্ক্র্যাপার
                         video_link = None
                         
-                        # ১. প্রথমে বৈধ ভিডিও আইফ্রেম খুঁজবে
+                        # ১. আইফ্রেম চেক
                         for iframe in art_soup.find_all('iframe'):
                             src = iframe.get('src', '')
-                            # শুধুমাত্র আসল ভিডিও প্ল্যাটফর্ম হলে নিবে (এডস বা ট্র্যাকার বাদ)
-                            if any(platform in src for platform in ['youtube', 'vimeo', 'dailymotion', 'rt.com']):
+                            if src and 'ad' not in src.lower() and 'banner' not in src.lower():
                                 if src.startswith('//'): src = 'https:' + src
                                 video_link = src
                                 break
                         
-                        # ২. ভিডিও না পেলে টুইটারের এমবেড খুঁজবে
+                        # ২. HTML5 ভিডিও ট্যাগ (RT News এর জন্য)
+                        if not video_link:
+                            vid_tag = art_soup.find('video')
+                            if vid_tag:
+                                src = vid_tag.get('src')
+                                if not src and vid_tag.find('source'):
+                                    src = vid_tag.find('source').get('src')
+                                if src:
+                                    video_link = src
+                        
+                        # ৩. টুইটার এমবেড (ভিডিও না পেলে)
                         if not video_link:
                             tweet = art_soup.find('blockquote', class_='twitter-tweet')
                             if tweet:
                                 a_tags = tweet.find_all('a')
-                                if a_tags: video_link = a_tags[-1].get('href') # টুইটের লিংক নিবে
+                                if a_tags: video_link = a_tags[-1].get('href')
                         
                         paragraphs = art_soup.find_all('p')
                         full_eng_text = "\n\n".join([p.text.strip() for p in paragraphs if len(p.text.split()) > 10])
@@ -238,7 +257,7 @@ elif st.session_state.view == 'details':
     word_count = len(BeautifulSoup(news[4], "html.parser").get_text().split())
     read_time = max(1, word_count // 150)
 
-    # 🔴 পার্ট ১: টাইটেল এবং প্রথম ছবি
+    # 🔴 পার্ট ১: টাইটেল এবং ছবি
     st.markdown(f"""
         <div class="content-box">
             <div style="text-align: center;">
@@ -254,29 +273,34 @@ elif st.session_state.view == 'details':
     
     # 🔴 পার্ট ২: প্রথম প্যারাগ্রাফ
     if len(paragraphs) > 0:
-        # টুইটার লিংক ফিক্স করা (যদি টেক্সটের ভেতর pic.twitter থাকে)
         para1 = re.sub(r'(pic\.twitter\.com/\w+)', r'<a href="https://\1" target="_blank" style="color:#1DA1F2;">\1</a>', paragraphs[0])
         st.markdown(f'<div class="content-box" style="font-size: {st.session_state.font_size}px; line-height: 1.8; text-align: justify;">{para1}</p></div>', unsafe_allow_html=True)
 
-    # 🔴 পার্ট ৩: ভিডিও বা টুইট এমবেড (HTML ব্রেক ছাড়া, তাই আর সাদা বক্স আসবে না)
-    if news[6] and news[6].startswith('http'):
+    # 🔴 পার্ট ৩: ভিডিও বা টুইট (একদম মাঝখানে)
+    if news[6]:
         st.markdown("<br>", unsafe_allow_html=True)
-        col_vid1, col_vid2, col_vid3 = st.columns([1, 6, 1])
-        with col_vid2:
-            if 'twitter.com' in news[6]:
-                # টুইটার আসল এমবেড
-                tweet_html = f'''<blockquote class="twitter-tweet" data-theme="light"><a href="{news[6]}"></a></blockquote> <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>'''
-                components.html(tweet_html, height=500, scrolling=True)
-            elif "youtube" in news[6] or "vimeo" in news[6]:
+        if 'twitter.com' in news[6] or 'x.com' in news[6]:
+            # টুইটার এমবেড সেন্টারিং ფিক্স
+            tweet_html = f'''
+            <div style="display: flex; justify-content: center; width: 100%;">
+                <blockquote class="twitter-tweet" data-theme="light"><a href="{news[6]}"></a></blockquote>
+            </div>
+            <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+            '''
+            components.html(tweet_html, height=600, scrolling=True)
+        elif "youtube" in news[6] or "vimeo" in news[6] or news[6].endswith('.mp4'):
+            col_vid1, col_vid2, col_vid3 = st.columns([1, 6, 1])
+            with col_vid2:
                 st.video(news[6])
-            else:
+        else:
+            col_vid1, col_vid2, col_vid3 = st.columns([1, 6, 1])
+            with col_vid2:
                 st.markdown(f'<iframe src="{news[6]}" width="100%" height="400" frameborder="0" style="border-radius: 12px;"></iframe>', unsafe_allow_html=True)
         st.markdown("<br>", unsafe_allow_html=True)
 
-    # 🔴 পার্ট ৪: বাকি নিউজ এবং সোর্স লিঙ্ক
+    # 🔴 পার্ট ৪: বাকি নিউজ
     if len(paragraphs) > 1:
         rest_of_news = "</p>".join(paragraphs[1:]) + "</p>"
-        # টেক্সটের ভেতরের টুইটার লিংক ফিক্স
         rest_of_news = re.sub(r'(pic\.twitter\.com/\w+)', r'<a href="https://\1" target="_blank" style="color:#1DA1F2;">\1 (টুইটটি দেখুন)</a>', rest_of_news)
         
         st.markdown(f'''
