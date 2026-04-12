@@ -213,13 +213,23 @@ elif st.session_state.view == 'details':
         audio = generate_audio(news[4])
         if audio: st.audio(audio)
 
-    if news[6]:
-        st.write("---")
-        st.subheader("📺 ভিডিও / সোশ্যাল এমবেড")
+if news[6]:
+    st.write("---")
+    # কালো রঙের টাইটেল
+    st.markdown('<h3 style="color: #000000; font-family: \'Hind Siliguri\', sans-serif;">📺 ভিডিও / সোশ্যাল এমবেড</h3>', unsafe_allow_html=True)
+    
+    # ভিডিও কন্টেইনার (এটি ভিডিওকে ছোট এবং মাঝখানে রাখবে)
+    col_vid1, col_vid2, col_vid3 = st.columns([1, 4, 1]) # মাঝখানের কলামটি বড়
+    with col_vid2:
         if "youtube" in news[6] or "vimeo" in news[6]:
             st.video(news[6])
         else:
-            st.markdown(f'<iframe src="{news[6]}" width="100%" height="400" frameborder="0"></iframe>', unsafe_allow_html=True)
+            # আইফ্রেম ভিডিও ছোট করার জন্য স্টাইলসহ
+            st.markdown(f'''
+                <div style="display: flex; justify-content: center;">
+                    <iframe src="{news[6]}" width="100%" height="350" frameborder="0" style="border-radius: 12px; max-width: 600px;"></iframe>
+                </div>
+            ''', unsafe_allow_html=True)
 
     article_html = f"""<div style="background-color: #FFFBF0; padding: 40px; border-radius: 16px; border: 1px solid #E5E0D5; max-width: 850px; margin: 0 auto;">
 <h1 class="article-title">{news[0]}</h1>
