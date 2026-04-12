@@ -202,7 +202,7 @@ elif st.session_state.view == 'details':
         st.session_state.view = 'home'
         st.rerun()
 
-    # ১. অডিও বাটন (সবার উপরে)
+    # ১. অডিও বাটন
     col_a1, col_a2, col_a3 = st.columns([1, 2, 1])
     with col_a2:
         if st.button("🎧 সংবাদটি বাংলায় শুনুন", use_container_width=True):
@@ -210,20 +210,24 @@ elif st.session_state.view == 'details':
                 audio = generate_audio(news[4])
                 if audio: st.audio(audio)
 
-    # ২. সোশ্যাল শেয়ার বাটন
+    # ২. সোশ্যাল শেয়ার বাটন
     encoded_title = urllib.parse.quote(news[0])
     st.markdown(f"""
-    <div style="text-align: center; margin: 20px 0;">
-        <a class="share-btn fb" href="https://www.facebook.com/sharer/sharer.php?u={news[5]}" target="_blank">Facebook</a>
-        <a class="share-btn wa" href="https://api.whatsapp.com/send?text={encoded_title}%20{news[5]}" target="_blank">WhatsApp</a>
-    </div>
+        <div style="text-align: center; margin: 20px 0;">
+            <a class="share-btn fb" href="https://www.facebook.com/sharer/sharer.php?u={news[5]}" target="_blank">Facebook</a>
+            <a class="share-btn wa" href="https://api.whatsapp.com/send?text={encoded_title}%20{news[5]}" target="_blank">WhatsApp</a>
+        </div>
     """, unsafe_allow_html=True)
 
-    # ৩. নিউজ টাইটেল এবং মেটা তথ্য
+    # মূল কন্টেইনার শুরু
+    st.markdown('<div style="background-color: #FFFBF0; padding: 40px; border-radius: 16px; border: 1px solid #E5E0D5; max-width: 850px; margin: 0 auto;">', unsafe_allow_html=True)
+
+    # ৩. নিউজ টাইটেল, মেটা তথ্য এবং মূল ছবি
     st.markdown(f"""
         <div style="text-align: center; margin-bottom: 20px;">
             <h1 class="article-title">{news[0]}</h1>
             <p style='color: #4B5563; font-weight: 600;'>সোর্স: {news[2]} | {news[3][:10]}</p>
+            <div style="text-align: center; margin: 30px 0;"><img src="{news[1]}" style="max-width: 100%; border-radius: 12px;"></div>
         </div>
     """, unsafe_allow_html=True)
 
@@ -232,38 +236,30 @@ elif st.session_state.view == 'details':
     
     # ৪. প্রথম প্যারাগ্রাফ প্রদর্শন
     if len(paragraphs) > 0:
-        st.markdown(f'<div class="article-text">{paragraphs[0]}</p></div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="color: #111827; font-size: 21px; line-height: 1.8; text-align: justify;">{paragraphs[0]}</p></div>', unsafe_allow_html=True)
 
-    # ৫. প্রথম প্যারার পর ভিডিও (ছোট মাপে)
+    # ৫. প্রথম প্যারার পর ভিডিও
     if news[6]:
-        col_vid1, col_vid2, col_vid3 = st.columns([1, 5, 1])
+        col_vid1, col_vid2, col_vid3 = st.columns([1, 10, 1]) # কন্টেইনারের ভেতরে ভিডিওর জন্য জায়গা
         with col_vid2:
             if "youtube" in news[6] or "vimeo" in news[6]:
                 st.video(news[6])
             else:
                 st.markdown(f'''
                     <div style="display: flex; justify-content: center; margin: 20px 0;">
-                        <iframe src="{news[6]}" width="100%" height="350" frameborder="0" style="border-radius: 12px; max-width: 650px;"></iframe>
+                        <iframe src="{news[6]}" width="100%" height="350" frameborder="0" style="border-radius: 12px;"></iframe>
                     </div>
                 ''', unsafe_allow_html=True)
 
     # ৬. বাকি নিউজ প্যারাগ্রাফগুলো প্রদর্শন
     if len(paragraphs) > 1:
         rest_of_news = "".join(paragraphs[1:])
-        st.markdown(f'<div class="article-text">{rest_of_news}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="color: #111827; font-size: 21px; line-height: 1.8; text-align: justify;">{rest_of_news}</div>', unsafe_allow_html=True)
 
     # মূল খবরের লিঙ্ক
     st.markdown(f"""
         <hr>
-        <center><a href="{news[5]}" target="_blank" style="color: #D35400; font-weight: 700; text-decoration: none;">🔗 মূল ইংরেজি খবরটি পড়ুন</a></center>
+        <center><a href="{news[5]}" target="_blank" style="color: #D35400; font-weight: 700; text-decoration: none; font-size: 18px;">🔗 মূল ইংরেজি খবরটি পড়ুন</a></center>
     """, unsafe_allow_html=True)
 
-    article_html = f"""<div style="background-color: #FFFBF0; padding: 40px; border-radius: 16px; border: 1px solid #E5E0D5; max-width: 850px; margin: 0 auto;">
-<h1 class="article-title">{news[0]}</h1>
-<p style='text-align: center; color: #4B5563; font-weight: 600;'>সোর্স: {news[2]} | {news[3][:10]}</p>
-<div style="text-align: center; margin: 30px 0;"><img src="{news[1]}" style="max-width: 100%; border-radius: 12px;"></div>
-<div style="color: #111827; font-size: 21px; line-height: 1.8; text-align: justify;">{news[4]}</div>
-<hr>
-<center><a href="{news[5]}" target="_blank" style="color: #D35400; font-weight: 700; text-decoration: none;">🔗 মূল ইংরেজি খবরটি পড়ুন</a></center>
-</div>"""
-    st.markdown(article_html, unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True) # কন্টেইনার শেষ
