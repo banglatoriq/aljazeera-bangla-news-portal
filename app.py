@@ -43,18 +43,16 @@ st.markdown(f"""
 /* গ্লোবাল ফন্ট এবং স্ক্রল */
 html, body, .stApp {{ font-family: 'Hind Siliguri', sans-serif !important; scroll-behavior: smooth; background-color: {bg_color}; }}
 
-/* 🔴 উপরের কালো বার এবং অতিরিক্ত স্পেস রিমুভ করা হয়েছে */
+/* উপরের কালো বার এবং অতিরিক্ত স্পেস রিমুভ */
 header[data-testid="stHeader"] {{ display: none !important; }}
 .block-container {{ padding-top: 1.5rem !important; padding-bottom: 2rem !important; margin-top: 0 !important; }}
 
-/* মেইন এরিয়ার টেক্সট কালার */
 .main {{ color: {text_color} !important; }}
 p {{ color: #111827 !important; font-family: 'Hind Siliguri', sans-serif !important; }}
 
 .news-image-container {{ width: 100%; overflow: hidden; border-radius: 10px; margin-bottom: 10px; background-color: #E5E0D5; position: relative; }}
 .news-image-container img {{ width: 100%; height: 200px; display: block; object-fit: cover; }}
 
-/* নিউজ মেটা */
 .news-meta {{ color: #4B5563 !important; font-size: 14px; margin-top: 5px; font-weight: 600; }}
 
 /* বাটন স্টাইল */
@@ -65,11 +63,9 @@ p {{ color: #111827 !important; font-family: 'Hind Siliguri', sans-serif !import
 }}
 .stButton > button:hover, div[data-testid="stButton"] > button:hover {{ color: {accent_color} !important; transform: translateX(3px); }}
 
-/* স্পেশাল নেভিগেশন বাটন */
 .nav-btn > button {{ background-color: #E5E0D5 !important; padding: 10px !important; border-radius: 8px !important; text-align: center !important; transform: none !important; }}
 .nav-btn > button:hover {{ background-color: {accent_color} !important; color: white !important; transform: none !important; }}
 
-/* হোম পেজ ব্যাক বাটন (টপ) */
 .top-home-btn > button {{ background-color: #111827 !important; color: white !important; padding: 5px 15px !important; border-radius: 6px !important; font-size: 16px !important; text-align: center !important; }}
 .top-home-btn > button:hover {{ background-color: {accent_color} !important; }}
 
@@ -95,10 +91,47 @@ def show_logo():
     </div>
     """, unsafe_allow_html=True)
 
+# 🔴 নতুন ফাংশন: ইংরেজি সংখ্যাকে বাংলায় রূপান্তর
+def eng_to_bn_num(text):
+    if text is None: return ""
+    bn_digits = {'0': '০', '1': '১', '2': '২', '3': '৩', '4': '৪', '5': '৫', '6': '৬', '7': '৭', '8': '৮', '9': '৯'}
+    text = str(text)
+    
+    # টুইটার লিংকগুলো সাময়িকভাবে লুকিয়ে রাখা হচ্ছে যাতে লিংকের সংখ্যা কনভার্ট না হয়
+    twitter_links = re.findall(r'pic\.twitter\.com/\w+', text)
+    for i, link in enumerate(twitter_links):
+        text = text.replace(link, f"__TWITTER_{i}__")
+        
+    converted = ''.join(bn_digits.get(char, char) for char in text)
+    
+    # টুইটার লিংক পুনরায় বসানো
+    for i, link in enumerate(twitter_links):
+        converted = converted.replace(f"__TWITTER_{i}__", link)
+        
+    return converted
+
+# 🔴 নতুন ফাংশন: ইংরেজি তারিখকে বাংলা তারিখের ফরমেটে (যেমন: ১৫ এপ্রিল, ২০২৬) রূপান্তর
+def get_bengali_date(date_str):
+    try:
+        if '.' in date_str:
+            dt = datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S.%f')
+        else:
+            dt = datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
+            
+        months = {1: 'জানুয়ারি', 2: 'ফেব্রুয়ারি', 3: 'মার্চ', 4: 'এপ্রিল', 5: 'মে', 6: 'জুন', 7: 'জুলাই', 8: 'আগস্ট', 9: 'সেপ্টেম্বর', 10: 'অক্টোবর', 11: 'নভেম্বর', 12: 'ডিসেম্বর'}
+        
+        day = eng_to_bn_num(dt.day)
+        year = eng_to_bn_num(dt.year)
+        month = months[dt.month]
+        
+        return f"{day} {month}, {year}"
+    except:
+        return eng_to_bn_num(date_str[:10])
+
 # --- ডাটাবেস সেটআপ ---
 @st.cache_resource
 def init_db():
-    conn = sqlite3.connect('news_db_pro_v3.db', check_same_thread=False, timeout=30)
+    conn = sqlite3.connect('news_db_pro_v4.db', check_same_thread=False, timeout=30)
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS news_table
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, link TEXT, translated_title TEXT, 
@@ -116,8 +149,11 @@ def safe_translate(text):
         if len(text) > 1500:
             sentences = text.split('. ')
             translated = [translator.translate(s) for s in sentences if s.strip()]
-            return "। ".join(translated)
-        return translator.translate(text)
+            res = "। ".join(translated)
+        else:
+            res = translator.translate(text)
+        # অনুবাদের পর সংখ্যাগুলো বাংলায় কনভার্ট করা
+        return eng_to_bn_num(res)
     except: return text
 
 def generate_audio(text):
@@ -254,13 +290,15 @@ if st.session_state.view == 'home':
                     n = all_news[i+j]
                     with cols[j]:
                         st.markdown(f'<div class="news-image-container"><img src="{n[2]}"></div>', unsafe_allow_html=True)
-                        st.markdown(f"<div class='news-meta'>{n[3]} | {n[4][:10]}</div>", unsafe_allow_html=True)
+                        # 🔴 তারিখ বাংলায় কনভার্ট করে দেখানো হচ্ছে
+                        bn_date = get_bengali_date(n[4])
+                        st.markdown(f"<div class='news-meta'>{n[3]} | {bn_date}</div>", unsafe_allow_html=True)
                         if st.button(n[1], key=f"btn_{n[0]}", use_container_width=True):
                             st.session_state.selected_news_id = n[0]
                             st.session_state.view = 'details'
                             st.rerun()
 
-        # পেজিনেশন বাটন
+        # পেজিনেশন বাটন (বাংলা সংখ্যায়)
         if nav_selection == "🏠 হোম পেজ" and total_pages > 1:
             st.write("---")
             p_col1, p_col2, p_col3 = st.columns([1, 2, 1])
@@ -272,7 +310,8 @@ if st.session_state.view == 'home':
                             st.session_state.page_num -= 1
                             st.rerun()
                 with txt_col:
-                    st.markdown(f"<div style='text-align: center; margin-top: 8px; font-weight: bold; color: #4B5563;'>পৃষ্ঠা {st.session_state.page_num} / {total_pages}</div>", unsafe_allow_html=True)
+                    # 🔴 পেজ নম্বর বাংলায়
+                    st.markdown(f"<div style='text-align: center; margin-top: 8px; font-weight: bold; color: #4B5563;'>পৃষ্ঠা {eng_to_bn_num(st.session_state.page_num)} / {eng_to_bn_num(total_pages)}</div>", unsafe_allow_html=True)
                 with btn_col2:
                     if st.session_state.page_num < total_pages:
                         if st.button("পরের পাতা ➡️", use_container_width=True):
@@ -285,7 +324,6 @@ elif st.session_state.view == 'details':
     news = c.fetchone()
     news_id = news[0]
     
-    # 🔴 টপ কন্ট্রোল বার (হোম পেজ বাটন হাইলাইট করা হয়েছে)
     t1, t2, t3 = st.columns([1, 2, 1])
     with t1:
         st.markdown('<div class="top-home-btn">', unsafe_allow_html=True)
@@ -301,7 +339,6 @@ elif st.session_state.view == 'details':
             else: st.session_state.bookmarks.append(news_id)
             st.rerun()
 
-    # অডিও বাটন
     col_a1, col_a2, col_a3 = st.columns([1, 2, 1])
     with col_a2:
         if st.button("🎧 সংবাদটি বাংলায় শুনুন", use_container_width=True):
@@ -319,13 +356,17 @@ elif st.session_state.view == 'details':
 
     word_count = len(BeautifulSoup(news[5], "html.parser").get_text().split())
     read_time = max(1, word_count // 150)
+    
+    # 🔴 রিড টাইম ও ডেট বাংলায় কনভার্ট
+    bn_read_time = eng_to_bn_num(read_time)
+    bn_date_details = get_bengali_date(news[4])
 
     st.markdown(f"""
         <div class="content-box">
             <div style="text-align: center;">
                 <h1 class="article-title">{news[1]}</h1>
-                <div class="read-time-badge">⏱️ পড়তে সময় লাগবে প্রায় {read_time} মিনিট</div>
-                <p style='color: #4B5563; font-weight: 600;'>সোর্স: {news[3]} | {news[4][:10]}</p>
+                <div class="read-time-badge">⏱️ পড়তে সময় লাগবে প্রায় {bn_read_time} মিনিট</div>
+                <p style='color: #4B5563; font-weight: 600;'>সোর্স: {news[3]} | {bn_date_details}</p>
                 <img src="{news[2]}" style="width: 100%; border-radius: 12px; margin-top: 15px; max-height: 450px; object-fit: cover;">
             </div>
         </div>
@@ -344,7 +385,6 @@ elif st.session_state.view == 'details':
             </div>
         ''', unsafe_allow_html=True)
 
-    # 🔴 সাদা বক্স ফিক্স: ভ্যালিড লিংক চেক করা হচ্ছে (অন্তত ১০ ক্যারেক্টার)
     video_url = news[7]
     if video_url and isinstance(video_url, str) and len(video_url.strip()) > 10:
         st.markdown("<br>", unsafe_allow_html=True)
@@ -390,7 +430,6 @@ elif st.session_state.view == 'details':
                 st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
-    # 🔴 থাম্বনেইলের সাইজ বড় করা হয়েছে (হাইট: 180px)
     st.markdown("<h3 style='text-align: center; margin-top: 50px; margin-bottom: 20px; color: #D35400;'>⚡ এই সম্পর্কিত আরও খবর</h3>", unsafe_allow_html=True)
     c.execute("SELECT id, translated_title, image_url, source, date FROM news_table WHERE source=? AND id!=? ORDER BY date DESC LIMIT 3", (news[3], news_id))
     related = c.fetchall()
