@@ -43,17 +43,18 @@ st.markdown(f"""
 /* গ্লোবাল ফন্ট এবং স্ক্রল */
 html, body, .stApp {{ font-family: 'Hind Siliguri', sans-serif !important; scroll-behavior: smooth; background-color: {bg_color}; }}
 
-/* উপরের অতিরিক্ত স্পেস রিমুভ */
-.block-container {{ padding-top: 1rem !important; padding-bottom: 2rem !important; }}
+/* 🔴 উপরের কালো বার এবং অতিরিক্ত স্পেস রিমুভ করা হয়েছে */
+header[data-testid="stHeader"] {{ display: none !important; }}
+.block-container {{ padding-top: 1.5rem !important; padding-bottom: 2rem !important; margin-top: 0 !important; }}
 
-/* মেইন এরিয়ার টেক্সট কালার (যাতে সাইডবার নষ্ট না হয়) */
+/* মেইন এরিয়ার টেক্সট কালার */
 .main {{ color: {text_color} !important; }}
 p {{ color: #111827 !important; font-family: 'Hind Siliguri', sans-serif !important; }}
 
 .news-image-container {{ width: 100%; overflow: hidden; border-radius: 10px; margin-bottom: 10px; background-color: #E5E0D5; position: relative; }}
 .news-image-container img {{ width: 100%; height: 200px; display: block; object-fit: cover; }}
 
-/* নিউজ মেটা (সাদা হওয়া রোধ করতে) */
+/* নিউজ মেটা */
 .news-meta {{ color: #4B5563 !important; font-size: 14px; margin-top: 5px; font-weight: 600; }}
 
 /* বাটন স্টাইল */
@@ -62,13 +63,17 @@ p {{ color: #111827 !important; font-family: 'Hind Siliguri', sans-serif !import
     font-family: 'Hind Siliguri', sans-serif !important; font-size: 18px !important; font-weight: 600 !important;
     text-align: left !important; line-height: 1.4 !important; padding: 0 !important; white-space: normal !important; display: block !important; transition: 0.2s;
 }}
-.stButton > button:hover, div[data-testid="stButton"] > button:hover {{ color: {accent_color} !important; transform: translateX(5px); }}
+.stButton > button:hover, div[data-testid="stButton"] > button:hover {{ color: {accent_color} !important; transform: translateX(3px); }}
 
-/* স্পেশাল নেভিগেশন বাটন (নিউজ পেজের নিচে) */
+/* স্পেশাল নেভিগেশন বাটন */
 .nav-btn > button {{ background-color: #E5E0D5 !important; padding: 10px !important; border-radius: 8px !important; text-align: center !important; transform: none !important; }}
 .nav-btn > button:hover {{ background-color: {accent_color} !important; color: white !important; transform: none !important; }}
 
-.article-title {{ line-height: 1.3; color: #000000 !important; text-align: center; margin-bottom: 10px; font-weight: 800; font-size: 36px; }}
+/* হোম পেজ ব্যাক বাটন (টপ) */
+.top-home-btn > button {{ background-color: #111827 !important; color: white !important; padding: 5px 15px !important; border-radius: 6px !important; font-size: 16px !important; text-align: center !important; }}
+.top-home-btn > button:hover {{ background-color: {accent_color} !important; }}
+
+.article-title {{ line-height: 1.3; color: #000000 !important; text-align: center; margin-bottom: 10px; font-weight: 800; font-size: 34px; }}
 .share-btn {{ display: inline-flex; align-items: center; justify-content: center; padding: 8px 15px; border-radius: 5px; color: white !important; text-decoration: none; font-size: 14px; font-weight: 600; margin-right: 10px; transition: 0.2s; }}
 .share-btn:hover {{ opacity: 0.8; transform: translateY(-2px); }}
 .fb {{ background-color: #1877F2; }}
@@ -83,7 +88,7 @@ p {{ color: #111827 !important; font-family: 'Hind Siliguri', sans-serif !import
 
 def show_logo():
     st.markdown("""
-    <div style="text-align: center; margin-bottom: 25px; padding-top: 0px;">
+    <div style="text-align: center; margin-bottom: 25px;">
         <span style="font-family: 'Arial', sans-serif; font-size: 48px; font-weight: 900; color: #D35400;">হাওয়া</span>
         <span style="font-family: 'Arial', sans-serif; font-size: 48px; font-weight: 300; color: #111827;"> বাংলা</span>
         <br><span style="font-size: 17px; color: #4B5563; font-weight: 600;">এবং অন্যান্য আন্তর্জাতিক সংবাদ</span>
@@ -93,7 +98,7 @@ def show_logo():
 # --- ডাটাবেস সেটআপ ---
 @st.cache_resource
 def init_db():
-    conn = sqlite3.connect('news_db_pro_v2.db', check_same_thread=False, timeout=30)
+    conn = sqlite3.connect('news_db_pro_v3.db', check_same_thread=False, timeout=30)
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS news_table
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, link TEXT, translated_title TEXT, 
@@ -215,12 +220,11 @@ if st.sidebar.button("🔄 খবর আপডেট করুন"):
 if st.session_state.view == 'home':
     show_logo()
     
-    items_per_page = 15 # এক পেজে ১৫টি নিউজ
+    items_per_page = 15
 
     if nav_selection == "🏠 হোম পেজ":
         st.markdown("<h3 style='color:#111827;'>সর্বশেষ সংবাদ</h3>", unsafe_allow_html=True)
         
-        # 🔴 পেজিনেশন লজিক
         c.execute("SELECT COUNT(*) FROM news_table")
         total_items = c.fetchone()[0]
         total_pages = max(1, math.ceil(total_items / items_per_page))
@@ -256,7 +260,7 @@ if st.session_state.view == 'home':
                             st.session_state.view = 'details'
                             st.rerun()
 
-        # 🔴 পেজিনেশন বাটন (শুধুমাত্র হোম পেজের জন্য)
+        # পেজিনেশন বাটন
         if nav_selection == "🏠 হোম পেজ" and total_pages > 1:
             st.write("---")
             p_col1, p_col2, p_col3 = st.columns([1, 2, 1])
@@ -281,20 +285,23 @@ elif st.session_state.view == 'details':
     news = c.fetchone()
     news_id = news[0]
     
-    t1, t2, t3 = st.columns([1, 1.5, 1])
+    # 🔴 টপ কন্ট্রোল বার (হোম পেজ বাটন হাইলাইট করা হয়েছে)
+    t1, t2, t3 = st.columns([1, 2, 1])
     with t1:
-        if st.button("⬅️ ফিরে যান"):
+        st.markdown('<div class="top-home-btn">', unsafe_allow_html=True)
+        if st.button("⬅️ হোম পেজ", use_container_width=True):
             st.session_state.view = 'home'
             st.rerun()
-    with t2:
-        st.session_state.font_size = st.select_slider("📖 ফন্ট সাইজ:", options=[18, 20, 22, 24, 26], value=st.session_state.font_size, label_visibility="collapsed")
+        st.markdown('</div>', unsafe_allow_html=True)
+        
     with t3:
         is_saved = news_id in st.session_state.bookmarks
-        if st.button("🔖 সেভড (রিমুভ)" if is_saved else "🔖 সেভ করে রাখুন"):
+        if st.button("🔖 সেভড (রিমুভ)" if is_saved else "🔖 সেভ করে রাখুন", use_container_width=True):
             if is_saved: st.session_state.bookmarks.remove(news_id)
             else: st.session_state.bookmarks.append(news_id)
             st.rerun()
 
+    # অডিও বাটন
     col_a1, col_a2, col_a3 = st.columns([1, 2, 1])
     with col_a2:
         if st.button("🎧 সংবাদটি বাংলায় শুনুন", use_container_width=True):
@@ -337,18 +344,19 @@ elif st.session_state.view == 'details':
             </div>
         ''', unsafe_allow_html=True)
 
-    # 🔴 সাদা বক্স ফিক্স: শুধুমাত্র ভিডিও লিংক থাকলেই এই ব্লক কাজ করবে
-    if news[7] and str(news[7]).strip() != "":
+    # 🔴 সাদা বক্স ফিক্স: ভ্যালিড লিংক চেক করা হচ্ছে (অন্তত ১০ ক্যারেক্টার)
+    video_url = news[7]
+    if video_url and isinstance(video_url, str) and len(video_url.strip()) > 10:
         st.markdown("<br>", unsafe_allow_html=True)
-        if 'twitter.com' in news[7] or 'x.com' in news[7]:
-            tweet_html = f'''<div style="display: flex; justify-content: center; width: 100%;"><blockquote class="twitter-tweet" data-theme="light"><a href="{news[7]}"></a></blockquote></div><script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>'''
+        if 'twitter.com' in video_url or 'x.com' in video_url:
+            tweet_html = f'''<div style="display: flex; justify-content: center; width: 100%;"><blockquote class="twitter-tweet" data-theme="light"><a href="{video_url}"></a></blockquote></div><script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>'''
             components.html(tweet_html, height=600, scrolling=True)
-        elif "youtube" in news[7] or "vimeo" in news[7] or news[7].endswith('.mp4'):
+        elif "youtube" in video_url or "vimeo" in video_url or video_url.endswith('.mp4'):
             col_vid1, col_vid2, col_vid3 = st.columns([1, 6, 1])
-            with col_vid2: st.video(news[7])
+            with col_vid2: st.video(video_url)
         else:
             col_vid1, col_vid2, col_vid3 = st.columns([1, 6, 1])
-            with col_vid2: st.markdown(f'<iframe src="{news[7]}" width="100%" height="400" frameborder="0" style="border-radius: 12px;"></iframe>', unsafe_allow_html=True)
+            with col_vid2: st.markdown(f'<iframe src="{video_url}" width="100%" height="400" frameborder="0" style="border-radius: 12px;"></iframe>', unsafe_allow_html=True)
         st.markdown("<br>", unsafe_allow_html=True)
 
     if len(paragraphs) > 0:
@@ -363,7 +371,6 @@ elif st.session_state.view == 'details':
             </div>
         ''', unsafe_allow_html=True)
 
-    # 🔴 ন্যাভিগেশন বাটন (হোম পেজ ও পরবর্তী সংবাদ)
     st.markdown("<hr style='margin-top: 30px; border-top: 2px solid #E5E0D5;'>", unsafe_allow_html=True)
     bottom_col1, bottom_col2 = st.columns(2)
     with bottom_col1:
@@ -383,7 +390,7 @@ elif st.session_state.view == 'details':
                 st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
 
-    # 🔴 সম্পর্কিত খবর (কালার চেঞ্জ করা হয়েছে)
+    # 🔴 থাম্বনেইলের সাইজ বড় করা হয়েছে (হাইট: 180px)
     st.markdown("<h3 style='text-align: center; margin-top: 50px; margin-bottom: 20px; color: #D35400;'>⚡ এই সম্পর্কিত আরও খবর</h3>", unsafe_allow_html=True)
     c.execute("SELECT id, translated_title, image_url, source, date FROM news_table WHERE source=? AND id!=? ORDER BY date DESC LIMIT 3", (news[3], news_id))
     related = c.fetchall()
@@ -392,7 +399,7 @@ elif st.session_state.view == 'details':
         cols = st.columns(3)
         for j, rel in enumerate(related):
             with cols[j]:
-                st.markdown(f'<div class="news-image-container"><img src="{rel[2]}" style="height: 150px;"></div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="width:100%; height:180px; overflow:hidden; border-radius:10px; margin-bottom:10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);"><img src="{rel[2]}" style="width:100%; height:100%; object-fit:cover;"></div>', unsafe_allow_html=True)
                 if st.button(rel[1][:50] + "...", key=f"rel_{rel[0]}", use_container_width=True):
                     st.session_state.selected_news_id = rel[0]
                     st.rerun()
