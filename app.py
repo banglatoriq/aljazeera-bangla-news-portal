@@ -17,8 +17,8 @@ import urllib.parse
 import re
 import streamlit.components.v1 as components
 
-# --- পেইজ সেটআপ ---
-st.set_page_config(page_title="আন্তর্জাতিক সংবাদ - বাংলা", page_icon="📰", layout="wide")
+# --- পেইজ সেটআপ (সাইডবার ডিফল্টভাবে লুকানো) ---
+st.set_page_config(page_title="আন্তর্জাতিক সংবাদ - বাংলা", page_icon="📰", layout="wide", initial_sidebar_state="collapsed")
 
 # ==========================================
 # সেশন স্টেট (Session State) ইনিশিয়ালাইজেশন
@@ -26,7 +26,7 @@ st.set_page_config(page_title="আন্তর্জাতিক সংবাদ
 if 'font_size' not in st.session_state: st.session_state.font_size = 20
 if 'view' not in st.session_state: st.session_state.view = 'home'
 if 'page_num' not in st.session_state: st.session_state.page_num = 1
-if 'bookmarks' not in st.session_state: st.session_state.bookmarks = [] # বুকমার্ক লিস্ট
+if 'bookmarks' not in st.session_state: st.session_state.bookmarks = []
 
 # ==========================================
 # থিম এবং ফন্ট সেটআপ
@@ -39,19 +39,34 @@ accent_color = "#D35400"
 st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&display=swap');
-html, body, [class*="css"] {{ font-family: 'Hind Siliguri', sans-serif !important; color: {text_color} !important; scroll-behavior: smooth; }}
-.stApp {{ background-color: {bg_color}; }}
+
+/* গ্লোবাল ফন্ট এবং স্ক্রল */
+html, body, .stApp {{ font-family: 'Hind Siliguri', sans-serif !important; scroll-behavior: smooth; background-color: {bg_color}; }}
+
+/* উপরের অতিরিক্ত স্পেস রিমুভ */
+.block-container {{ padding-top: 1rem !important; padding-bottom: 2rem !important; }}
+
+/* মেইন এরিয়ার টেক্সট কালার (যাতে সাইডবার নষ্ট না হয়) */
+.main {{ color: {text_color} !important; }}
+p {{ color: #111827 !important; font-family: 'Hind Siliguri', sans-serif !important; }}
 
 .news-image-container {{ width: 100%; overflow: hidden; border-radius: 10px; margin-bottom: 10px; background-color: #E5E0D5; position: relative; }}
 .news-image-container img {{ width: 100%; height: 200px; display: block; object-fit: cover; }}
-p {{ color: #000000 !important; font-family: 'Hind Siliguri', sans-serif !important; }}
 
+/* নিউজ মেটা (সাদা হওয়া রোধ করতে) */
+.news-meta {{ color: #4B5563 !important; font-size: 14px; margin-top: 5px; font-weight: 600; }}
+
+/* বাটন স্টাইল */
 .stButton > button, div[data-testid="stButton"] > button {{ 
     background-color: transparent !important; color: #111827 !important; border: none !important; box-shadow: none !important; outline: none !important;
     font-family: 'Hind Siliguri', sans-serif !important; font-size: 18px !important; font-weight: 600 !important;
     text-align: left !important; line-height: 1.4 !important; padding: 0 !important; white-space: normal !important; display: block !important; transition: 0.2s;
 }}
 .stButton > button:hover, div[data-testid="stButton"] > button:hover {{ color: {accent_color} !important; transform: translateX(5px); }}
+
+/* স্পেশাল নেভিগেশন বাটন (নিউজ পেজের নিচে) */
+.nav-btn > button {{ background-color: #E5E0D5 !important; padding: 10px !important; border-radius: 8px !important; text-align: center !important; transform: none !important; }}
+.nav-btn > button:hover {{ background-color: {accent_color} !important; color: white !important; transform: none !important; }}
 
 .article-title {{ line-height: 1.3; color: #000000 !important; text-align: center; margin-bottom: 10px; font-weight: 800; font-size: 36px; }}
 .share-btn {{ display: inline-flex; align-items: center; justify-content: center; padding: 8px 15px; border-radius: 5px; color: white !important; text-decoration: none; font-size: 14px; font-weight: 600; margin-right: 10px; transition: 0.2s; }}
@@ -68,7 +83,7 @@ p {{ color: #000000 !important; font-family: 'Hind Siliguri', sans-serif !import
 
 def show_logo():
     st.markdown("""
-    <div style="text-align: center; margin-bottom: 40px; padding-top: 20px;">
+    <div style="text-align: center; margin-bottom: 25px; padding-top: 0px;">
         <span style="font-family: 'Arial', sans-serif; font-size: 48px; font-weight: 900; color: #D35400;">হাওয়া</span>
         <span style="font-family: 'Arial', sans-serif; font-size: 48px; font-weight: 300; color: #111827;"> বাংলা</span>
         <br><span style="font-size: 17px; color: #4B5563; font-weight: 600;">এবং অন্যান্য আন্তর্জাতিক সংবাদ</span>
@@ -78,7 +93,7 @@ def show_logo():
 # --- ডাটাবেস সেটআপ ---
 @st.cache_resource
 def init_db():
-    conn = sqlite3.connect('news_db_pro_v1.db', check_same_thread=False, timeout=30)
+    conn = sqlite3.connect('news_db_pro_v2.db', check_same_thread=False, timeout=30)
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS news_table
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, link TEXT, translated_title TEXT, 
@@ -89,7 +104,6 @@ def init_db():
 
 conn, c = init_db()
 
-# --- ফ্রি অনুবাদ ফাংশন ---
 def safe_translate(text):
     if not text: return ""
     try:
@@ -101,7 +115,6 @@ def safe_translate(text):
         return translator.translate(text)
     except: return text
 
-# --- অডিও জেনারেটর ---
 def generate_audio(text):
     clean_text = BeautifulSoup(text, "html.parser").get_text(separator=' ')[:4000]
     try:
@@ -119,7 +132,6 @@ def generate_audio(text):
         return audio_data
     except: return None
 
-# --- স্ক্র্যাপিং লজিক ---
 def scrape_news():
     news_feeds = {
         "Al Jazeera": "https://www.aljazeera.com/xml/rss/all.xml",
@@ -130,18 +142,17 @@ def scrape_news():
     for source_name, feed_url in news_feeds.items():
         try:
             feed = feedparser.parse(feed_url)
-            for entry in feed.entries[:4]: # একটু দ্রুত করার জন্য প্রতি সাইট থেকে ৪টি
+            for entry in feed.entries[:4]: 
                 c.execute("SELECT * FROM news_table WHERE link=?", (entry.link,))
                 if not c.fetchone():
                     try:
                         art_resp = requests.get(entry.link, headers=headers, timeout=10)
                         art_soup = BeautifulSoup(art_resp.content, 'html.parser')
                         
-                        # ফলব্যাক ইমেজ লজিক
                         img = art_soup.find('meta', property='og:image')
                         img_url = img['content'] if img else "https://images.unsplash.com/photo-1504711434969-e33886168f5c?q=80&w=800&auto=format&fit=crop"
                         
-                        video_link = None
+                        video_link = ""
                         for iframe in art_soup.find_all('iframe'):
                             src = iframe.get('src', '')
                             if src and 'ad' not in src.lower() and 'banner' not in src.lower():
@@ -189,7 +200,7 @@ def check_for_auto_update():
 check_for_auto_update()
 
 # ==========================================
-# Sidebar Navigation (নতুন UI)
+# Sidebar Navigation 
 # ==========================================
 st.sidebar.markdown("<h2 style='text-align: center; color: #D35400;'>মেনু</h2>", unsafe_allow_html=True)
 nav_selection = st.sidebar.radio("", ["🏠 হোম পেজ", "🔖 সেভ করা খবর"])
@@ -204,20 +215,31 @@ if st.sidebar.button("🔄 খবর আপডেট করুন"):
 if st.session_state.view == 'home':
     show_logo()
     
+    items_per_page = 15 # এক পেজে ১৫টি নিউজ
+
     if nav_selection == "🏠 হোম পেজ":
-        c.execute("SELECT id, translated_title, image_url, source, date FROM news_table ORDER BY date DESC LIMIT 15")
-        st.subheader("সর্বশেষ সংবাদ")
+        st.markdown("<h3 style='color:#111827;'>সর্বশেষ সংবাদ</h3>", unsafe_allow_html=True)
+        
+        # 🔴 পেজিনেশন লজিক
+        c.execute("SELECT COUNT(*) FROM news_table")
+        total_items = c.fetchone()[0]
+        total_pages = max(1, math.ceil(total_items / items_per_page))
+        
+        offset = (st.session_state.page_num - 1) * items_per_page
+        c.execute(f"SELECT id, translated_title, image_url, source, date FROM news_table ORDER BY date DESC LIMIT {items_per_page} OFFSET {offset}")
+        all_news = c.fetchall()
+
     else:
-        # সেভ করা খবর দেখানোর লজিক
         if st.session_state.bookmarks:
+            st.markdown("<h3 style='color:#111827;'>আপনার সেভ করা খবরগুলো</h3>", unsafe_allow_html=True)
             placeholders = ','.join(['?'] * len(st.session_state.bookmarks))
             c.execute(f"SELECT id, translated_title, image_url, source, date FROM news_table WHERE id IN ({placeholders}) ORDER BY date DESC", st.session_state.bookmarks)
-            st.subheader("আপনার সেভ করা খবরগুলো")
+            all_news = c.fetchall()
+            total_pages = 1
         else:
             st.info("আপনি এখনও কোনো খবর সেভ করেননি। খবর পড়ার সময় 'সেভ করুন' বাটনে ক্লিক করুন।")
-            c.execute("SELECT id FROM news_table WHERE id=-1") # Empty query
-            
-    all_news = c.fetchall()
+            all_news = []
+            total_pages = 1
 
     if all_news:
         st.write("---")
@@ -228,10 +250,29 @@ if st.session_state.view == 'home':
                     n = all_news[i+j]
                     with cols[j]:
                         st.markdown(f'<div class="news-image-container"><img src="{n[2]}"></div>', unsafe_allow_html=True)
-                        st.markdown(f"<div class='news-meta'><b>{n[3]}</b> | {n[4][:10]}</div>", unsafe_allow_html=True)
+                        st.markdown(f"<div class='news-meta'>{n[3]} | {n[4][:10]}</div>", unsafe_allow_html=True)
                         if st.button(n[1], key=f"btn_{n[0]}", use_container_width=True):
                             st.session_state.selected_news_id = n[0]
                             st.session_state.view = 'details'
+                            st.rerun()
+
+        # 🔴 পেজিনেশন বাটন (শুধুমাত্র হোম পেজের জন্য)
+        if nav_selection == "🏠 হোম পেজ" and total_pages > 1:
+            st.write("---")
+            p_col1, p_col2, p_col3 = st.columns([1, 2, 1])
+            with p_col2:
+                btn_col1, txt_col, btn_col2 = st.columns([1, 1, 1])
+                with btn_col1:
+                    if st.session_state.page_num > 1:
+                        if st.button("⬅️ আগের পাতা", use_container_width=True):
+                            st.session_state.page_num -= 1
+                            st.rerun()
+                with txt_col:
+                    st.markdown(f"<div style='text-align: center; margin-top: 8px; font-weight: bold; color: #4B5563;'>পৃষ্ঠা {st.session_state.page_num} / {total_pages}</div>", unsafe_allow_html=True)
+                with btn_col2:
+                    if st.session_state.page_num < total_pages:
+                        if st.button("পরের পাতা ➡️", use_container_width=True):
+                            st.session_state.page_num += 1
                             st.rerun()
 
 # --- ২. বিস্তারিত পেইজ ---
@@ -240,7 +281,6 @@ elif st.session_state.view == 'details':
     news = c.fetchone()
     news_id = news[0]
     
-    # টপ কন্ট্রোল বার
     t1, t2, t3 = st.columns([1, 1.5, 1])
     with t1:
         if st.button("⬅️ ফিরে যান"):
@@ -249,14 +289,12 @@ elif st.session_state.view == 'details':
     with t2:
         st.session_state.font_size = st.select_slider("📖 ফন্ট সাইজ:", options=[18, 20, 22, 24, 26], value=st.session_state.font_size, label_visibility="collapsed")
     with t3:
-        # 🔴 বুকমার্ক বাটন
         is_saved = news_id in st.session_state.bookmarks
         if st.button("🔖 সেভড (রিমুভ)" if is_saved else "🔖 সেভ করে রাখুন"):
             if is_saved: st.session_state.bookmarks.remove(news_id)
             else: st.session_state.bookmarks.append(news_id)
             st.rerun()
 
-    # অডিও বাটন
     col_a1, col_a2, col_a3 = st.columns([1, 2, 1])
     with col_a2:
         if st.button("🎧 সংবাদটি বাংলায় শুনুন", use_container_width=True):
@@ -264,7 +302,6 @@ elif st.session_state.view == 'details':
                 audio = generate_audio(news[5])
                 if audio: st.audio(audio)
 
-    # সোশ্যাল শেয়ার
     encoded_title = urllib.parse.quote(news[1])
     st.markdown(f"""
         <div style="text-align: center; margin: 20px 0;">
@@ -276,7 +313,6 @@ elif st.session_state.view == 'details':
     word_count = len(BeautifulSoup(news[5], "html.parser").get_text().split())
     read_time = max(1, word_count // 150)
 
-    # 🔴 পার্ট ১: টাইটেল এবং ছবি
     st.markdown(f"""
         <div class="content-box">
             <div style="text-align: center;">
@@ -290,7 +326,6 @@ elif st.session_state.view == 'details':
 
     paragraphs = [p for p in news[5].split('</p>') if p.strip()]
     
-    # 🔴 পার্ট ২: TL;DR (এক নজরে)
     if len(paragraphs) > 0:
         summary_text = BeautifulSoup(paragraphs[0], "html.parser").get_text()
         st.markdown(f'''
@@ -302,8 +337,8 @@ elif st.session_state.view == 'details':
             </div>
         ''', unsafe_allow_html=True)
 
-    # 🔴 পার্ট ৩: ভিডিও বা টুইট
-    if news[7]:
+    # 🔴 সাদা বক্স ফিক্স: শুধুমাত্র ভিডিও লিংক থাকলেই এই ব্লক কাজ করবে
+    if news[7] and str(news[7]).strip() != "":
         st.markdown("<br>", unsafe_allow_html=True)
         if 'twitter.com' in news[7] or 'x.com' in news[7]:
             tweet_html = f'''<div style="display: flex; justify-content: center; width: 100%;"><blockquote class="twitter-tweet" data-theme="light"><a href="{news[7]}"></a></blockquote></div><script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>'''
@@ -316,7 +351,6 @@ elif st.session_state.view == 'details':
             with col_vid2: st.markdown(f'<iframe src="{news[7]}" width="100%" height="400" frameborder="0" style="border-radius: 12px;"></iframe>', unsafe_allow_html=True)
         st.markdown("<br>", unsafe_allow_html=True)
 
-    # 🔴 পার্ট ৪: বিস্তারিত নিউজ
     if len(paragraphs) > 0:
         rest_of_news = "</p>".join(paragraphs) + "</p>"
         rest_of_news = re.sub(r'(pic\.twitter\.com/\w+)', r'<a href="https://\1" target="_blank" style="color:#1DA1F2;">\1 (টুইটটি দেখুন)</a>', rest_of_news)
@@ -329,8 +363,28 @@ elif st.session_state.view == 'details':
             </div>
         ''', unsafe_allow_html=True)
 
-    # 🔴 পার্ট ৫: সম্পর্কিত খবর (Related News)
-    st.markdown("<h3 style='text-align: center; margin-top: 40px; margin-bottom: 20px;'>⚡ এই সম্পর্কিত আরও খবর</h3>", unsafe_allow_html=True)
+    # 🔴 ন্যাভিগেশন বাটন (হোম পেজ ও পরবর্তী সংবাদ)
+    st.markdown("<hr style='margin-top: 30px; border-top: 2px solid #E5E0D5;'>", unsafe_allow_html=True)
+    bottom_col1, bottom_col2 = st.columns(2)
+    with bottom_col1:
+        st.markdown('<div class="nav-btn">', unsafe_allow_html=True)
+        if st.button("🏠 হোম পেজে ফেরত যান", key="home_btn_bottom", use_container_width=True):
+            st.session_state.view = 'home'
+            st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+    with bottom_col2:
+        c.execute("SELECT id FROM news_table WHERE id < ? ORDER BY id DESC LIMIT 1", (news_id,))
+        next_news = c.fetchone()
+        if next_news:
+            st.markdown('<div class="nav-btn">', unsafe_allow_html=True)
+            if st.button("পরবর্তী সংবাদ পড়ুন ➡️", key="next_btn_bottom", use_container_width=True):
+                st.session_state.selected_news_id = next_news[0]
+                st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
+
+    # 🔴 সম্পর্কিত খবর (কালার চেঞ্জ করা হয়েছে)
+    st.markdown("<h3 style='text-align: center; margin-top: 50px; margin-bottom: 20px; color: #D35400;'>⚡ এই সম্পর্কিত আরও খবর</h3>", unsafe_allow_html=True)
     c.execute("SELECT id, translated_title, image_url, source, date FROM news_table WHERE source=? AND id!=? ORDER BY date DESC LIMIT 3", (news[3], news_id))
     related = c.fetchall()
     
@@ -339,7 +393,7 @@ elif st.session_state.view == 'details':
         for j, rel in enumerate(related):
             with cols[j]:
                 st.markdown(f'<div class="news-image-container"><img src="{rel[2]}" style="height: 150px;"></div>', unsafe_allow_html=True)
-                if st.button(rel[1][:60] + "...", key=f"rel_{rel[0]}", use_container_width=True):
+                if st.button(rel[1][:50] + "...", key=f"rel_{rel[0]}", use_container_width=True):
                     st.session_state.selected_news_id = rel[0]
                     st.rerun()
     else:
