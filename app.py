@@ -43,7 +43,6 @@ st.markdown(f"""
 /* গ্লোবাল ফন্ট এবং স্ক্রল */
 html, body, .stApp {{ font-family: 'Hind Siliguri', sans-serif !important; scroll-behavior: smooth; background-color: {bg_color}; }}
 
-/* উপরের কালো বার এবং অতিরিক্ত স্পেস রিমুভ */
 header[data-testid="stHeader"] {{ display: none !important; }}
 .block-container {{ padding-top: 1.5rem !important; padding-bottom: 2rem !important; margin-top: 0 !important; }}
 
@@ -55,7 +54,6 @@ p {{ color: #111827 !important; font-family: 'Hind Siliguri', sans-serif !import
 
 .news-meta {{ color: #4B5563 !important; font-size: 14px; margin-top: 5px; font-weight: 600; }}
 
-/* বাটন স্টাইল */
 .stButton > button, div[data-testid="stButton"] > button {{ 
     background-color: transparent !important; color: #111827 !important; border: none !important; box-shadow: none !important; outline: none !important;
     font-family: 'Hind Siliguri', sans-serif !important; font-size: 18px !important; font-weight: 600 !important;
@@ -91,47 +89,36 @@ def show_logo():
     </div>
     """, unsafe_allow_html=True)
 
-# 🔴 নতুন ফাংশন: ইংরেজি সংখ্যাকে বাংলায় রূপান্তর
+# 🔴 ইংরেজি সংখ্যাকে বাংলায় রূপান্তর
 def eng_to_bn_num(text):
     if text is None: return ""
     bn_digits = {'0': '০', '1': '১', '2': '২', '3': '৩', '4': '৪', '5': '৫', '6': '৬', '7': '৭', '8': '৮', '9': '৯'}
     text = str(text)
     
-    # টুইটার লিংকগুলো সাময়িকভাবে লুকিয়ে রাখা হচ্ছে যাতে লিংকের সংখ্যা কনভার্ট না হয়
     twitter_links = re.findall(r'pic\.twitter\.com/\w+', text)
     for i, link in enumerate(twitter_links):
         text = text.replace(link, f"__TWITTER_{i}__")
         
     converted = ''.join(bn_digits.get(char, char) for char in text)
     
-    # টুইটার লিংক পুনরায় বসানো
     for i, link in enumerate(twitter_links):
         converted = converted.replace(f"__TWITTER_{i}__", link)
         
     return converted
 
-# 🔴 নতুন ফাংশন: ইংরেজি তারিখকে বাংলা তারিখের ফরমেটে (যেমন: ১৫ এপ্রিল, ২০২৬) রূপান্তর
+# 🔴 ইংরেজি তারিখকে বাংলা তারিখের ফরমেটে রূপান্তর
 def get_bengali_date(date_str):
     try:
-        if '.' in date_str:
-            dt = datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S.%f')
-        else:
-            dt = datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
-            
+        dt = datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S.%f') if '.' in date_str else datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
         months = {1: 'জানুয়ারি', 2: 'ফেব্রুয়ারি', 3: 'মার্চ', 4: 'এপ্রিল', 5: 'মে', 6: 'জুন', 7: 'জুলাই', 8: 'আগস্ট', 9: 'সেপ্টেম্বর', 10: 'অক্টোবর', 11: 'নভেম্বর', 12: 'ডিসেম্বর'}
-        
-        day = eng_to_bn_num(dt.day)
-        year = eng_to_bn_num(dt.year)
-        month = months[dt.month]
-        
-        return f"{day} {month}, {year}"
+        return f"{eng_to_bn_num(dt.day)} {months[dt.month]}, {eng_to_bn_num(dt.year)}"
     except:
         return eng_to_bn_num(date_str[:10])
 
 # --- ডাটাবেস সেটআপ ---
 @st.cache_resource
 def init_db():
-    conn = sqlite3.connect('news_db_pro_v4.db', check_same_thread=False, timeout=30)
+    conn = sqlite3.connect('news_db_pro_v5.db', check_same_thread=False, timeout=30)
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS news_table
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, link TEXT, translated_title TEXT, 
@@ -152,7 +139,6 @@ def safe_translate(text):
             res = "। ".join(translated)
         else:
             res = translator.translate(text)
-        # অনুবাদের পর সংখ্যাগুলো বাংলায় কনভার্ট করা
         return eng_to_bn_num(res)
     except: return text
 
@@ -174,11 +160,7 @@ def generate_audio(text):
     except: return None
 
 def scrape_news():
-    news_feeds = {
-        "Al Jazeera": "https://www.aljazeera.com/xml/rss/all.xml",
-        "TRT World": "https://www.trtworld.com/rss.xml",
-        "RT News": "https://www.rt.com/rss/"
-    }
+    news_feeds = {"Al Jazeera": "https://www.aljazeera.com/xml/rss/all.xml", "TRT World": "https://www.trtworld.com/rss.xml", "RT News": "https://www.rt.com/rss/"}
     headers = {'User-Agent': 'Mozilla/5.0'}
     for source_name, feed_url in news_feeds.items():
         try:
@@ -196,7 +178,8 @@ def scrape_news():
                         video_link = ""
                         for iframe in art_soup.find_all('iframe'):
                             src = iframe.get('src', '')
-                            if src and 'ad' not in src.lower() and 'banner' not in src.lower():
+                            # শুধু আসল মিডিয়া লিংক ডাটাবেসে যাবে
+                            if src and any(domain in src.lower() for domain in ['youtube', 'vimeo', 'dailymotion', 'twitter', 'rt.com']):
                                 if src.startswith('//'): src = 'https:' + src
                                 video_link = src
                                 break
@@ -255,20 +238,16 @@ if st.sidebar.button("🔄 খবর আপডেট করুন"):
 # --- ১. হোম পেইজ বা সেভ করা পেইজ ---
 if st.session_state.view == 'home':
     show_logo()
-    
     items_per_page = 15
 
     if nav_selection == "🏠 হোম পেজ":
         st.markdown("<h3 style='color:#111827;'>সর্বশেষ সংবাদ</h3>", unsafe_allow_html=True)
-        
         c.execute("SELECT COUNT(*) FROM news_table")
         total_items = c.fetchone()[0]
         total_pages = max(1, math.ceil(total_items / items_per_page))
-        
         offset = (st.session_state.page_num - 1) * items_per_page
         c.execute(f"SELECT id, translated_title, image_url, source, date FROM news_table ORDER BY date DESC LIMIT {items_per_page} OFFSET {offset}")
         all_news = c.fetchall()
-
     else:
         if st.session_state.bookmarks:
             st.markdown("<h3 style='color:#111827;'>আপনার সেভ করা খবরগুলো</h3>", unsafe_allow_html=True)
@@ -290,7 +269,6 @@ if st.session_state.view == 'home':
                     n = all_news[i+j]
                     with cols[j]:
                         st.markdown(f'<div class="news-image-container"><img src="{n[2]}"></div>', unsafe_allow_html=True)
-                        # 🔴 তারিখ বাংলায় কনভার্ট করে দেখানো হচ্ছে
                         bn_date = get_bengali_date(n[4])
                         st.markdown(f"<div class='news-meta'>{n[3]} | {bn_date}</div>", unsafe_allow_html=True)
                         if st.button(n[1], key=f"btn_{n[0]}", use_container_width=True):
@@ -298,7 +276,6 @@ if st.session_state.view == 'home':
                             st.session_state.view = 'details'
                             st.rerun()
 
-        # পেজিনেশন বাটন (বাংলা সংখ্যায়)
         if nav_selection == "🏠 হোম পেজ" and total_pages > 1:
             st.write("---")
             p_col1, p_col2, p_col3 = st.columns([1, 2, 1])
@@ -310,7 +287,6 @@ if st.session_state.view == 'home':
                             st.session_state.page_num -= 1
                             st.rerun()
                 with txt_col:
-                    # 🔴 পেজ নম্বর বাংলায়
                     st.markdown(f"<div style='text-align: center; margin-top: 8px; font-weight: bold; color: #4B5563;'>পৃষ্ঠা {eng_to_bn_num(st.session_state.page_num)} / {eng_to_bn_num(total_pages)}</div>", unsafe_allow_html=True)
                 with btn_col2:
                     if st.session_state.page_num < total_pages:
@@ -356,8 +332,6 @@ elif st.session_state.view == 'details':
 
     word_count = len(BeautifulSoup(news[5], "html.parser").get_text().split())
     read_time = max(1, word_count // 150)
-    
-    # 🔴 রিড টাইম ও ডেট বাংলায় কনভার্ট
     bn_read_time = eng_to_bn_num(read_time)
     bn_date_details = get_bengali_date(news[4])
 
@@ -385,8 +359,12 @@ elif st.session_state.view == 'details':
             </div>
         ''', unsafe_allow_html=True)
 
-    video_url = news[7]
-    if video_url and isinstance(video_url, str) and len(video_url.strip()) > 10:
+    # 🔴 সাদা বক্সের চূড়ান্ত ফিক্স (Strict Validator)
+    video_url = str(news[7]) if news[7] else ""
+    valid_vid_domains = ['youtube.com', 'youtu.be', 'vimeo.com', 'twitter.com', 'x.com', 'rt.com', '.mp4']
+    
+    # ডাটাবেসে হাবিজাবি লিংক থাকলেও সেটি রেন্ডার হবে না!
+    if video_url and len(video_url.strip()) > 10 and any(domain in video_url.lower() for domain in valid_vid_domains):
         st.markdown("<br>", unsafe_allow_html=True)
         if 'twitter.com' in video_url or 'x.com' in video_url:
             tweet_html = f'''<div style="display: flex; justify-content: center; width: 100%;"><blockquote class="twitter-tweet" data-theme="light"><a href="{video_url}"></a></blockquote></div><script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>'''
@@ -442,5 +420,3 @@ elif st.session_state.view == 'details':
                 if st.button(rel[1][:50] + "...", key=f"rel_{rel[0]}", use_container_width=True):
                     st.session_state.selected_news_id = rel[0]
                     st.rerun()
-    else:
-        st.info("আপাতত এই সম্পর্কিত আর কোনো খবর নেই।")
