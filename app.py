@@ -67,6 +67,11 @@ p {{ color: #111827 !important; font-family: 'Hind Siliguri', sans-serif !import
 .top-home-btn > button {{ background-color: #111827 !important; color: white !important; padding: 5px 15px !important; border-radius: 6px !important; font-size: 16px !important; text-align: center !important; }}
 .top-home-btn > button:hover {{ background-color: {accent_color} !important; }}
 
+/* 🔴 নতুন খবর আপডেট বাটন স্টাইল */
+.update-btn > button {{ background-color: #D35400 !important; color: white !important; padding: 8px 20px !important; border-radius: 20px !important; font-size: 16px !important; text-align: center !important; font-weight: bold !important; margin: 0 auto; display: block; width: auto !important; }}
+.update-btn > button:hover {{ background-color: #111827 !important; transform: scale(1.05); }}
+
+
 .article-title {{ line-height: 1.3; color: #000000 !important; text-align: center; margin-bottom: 10px; font-weight: 800; font-size: 34px; }}
 .share-btn {{ display: inline-flex; align-items: center; justify-content: center; padding: 8px 15px; border-radius: 5px; color: white !important; text-decoration: none; font-size: 14px; font-weight: 600; margin-right: 10px; transition: 0.2s; }}
 .share-btn:hover {{ opacity: 0.8; transform: translateY(-2px); }}
@@ -89,7 +94,6 @@ def show_logo():
     </div>
     """, unsafe_allow_html=True)
 
-# 🔴 ইংরেজি সংখ্যাকে বাংলায় রূপান্তর
 def eng_to_bn_num(text):
     if text is None: return ""
     bn_digits = {'0': '০', '1': '১', '2': '২', '3': '৩', '4': '৪', '5': '৫', '6': '৬', '7': '৭', '8': '৮', '9': '৯'}
@@ -106,7 +110,6 @@ def eng_to_bn_num(text):
         
     return converted
 
-# 🔴 ইংরেজি তারিখকে বাংলা তারিখের ফরমেটে রূপান্তর
 def get_bengali_date(date_str):
     try:
         dt = datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S.%f') if '.' in date_str else datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
@@ -118,7 +121,7 @@ def get_bengali_date(date_str):
 # --- ডাটাবেস সেটআপ ---
 @st.cache_resource
 def init_db():
-    conn = sqlite3.connect('news_db_pro_v5.db', check_same_thread=False, timeout=30)
+    conn = sqlite3.connect('news_db_pro_v6.db', check_same_thread=False, timeout=30)
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS news_table
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, link TEXT, translated_title TEXT, 
@@ -165,7 +168,7 @@ def scrape_news():
     for source_name, feed_url in news_feeds.items():
         try:
             feed = feedparser.parse(feed_url)
-            for entry in feed.entries[:4]: 
+            for entry in feed.entries[:5]: # ৫টি করে নিউজ ফেচ করা হবে
                 c.execute("SELECT * FROM news_table WHERE link=?", (entry.link,))
                 if not c.fetchone():
                     try:
@@ -178,7 +181,6 @@ def scrape_news():
                         video_link = ""
                         for iframe in art_soup.find_all('iframe'):
                             src = iframe.get('src', '')
-                            # শুধু আসল মিডিয়া লিংক ডাটাবেসে যাবে
                             if src and any(domain in src.lower() for domain in ['youtube', 'vimeo', 'dailymotion', 'twitter', 'rt.com']):
                                 if src.startswith('//'): src = 'https:' + src
                                 video_link = src
@@ -213,44 +215,40 @@ def scrape_news():
         conn.commit()
     except: pass
 
-def check_for_auto_update():
-    try:
-        c.execute("SELECT last_update FROM update_meta")
-        row = c.fetchone()
-        if not row or (datetime.now() - datetime.strptime(row[0], '%Y-%m-%d %H:%M:%S.%f') > timedelta(hours=3)):
-            scrape_news()
-    except: pass
-
-check_for_auto_update()
-
 # ==========================================
 # Sidebar Navigation 
 # ==========================================
 st.sidebar.markdown("<h2 style='text-align: center; color: #D35400;'>মেনু</h2>", unsafe_allow_html=True)
 nav_selection = st.sidebar.radio("", ["🏠 হোম পেজ", "🔖 সেভ করা খবর"])
 
-if st.sidebar.button("🔄 খবর আপডেট করুন"):
-    with st.spinner("খবর আপডেট হচ্ছে..."):
-        scrape_news()
-        st.session_state.view = 'home'
-        st.rerun()
-
 # --- ১. হোম পেইজ বা সেভ করা পেইজ ---
 if st.session_state.view == 'home':
     show_logo()
-    items_per_page = 15
+    
+    # 🔴 নতুন নিউজ লোড বাটন
+    st.markdown('<div class="update-btn">', unsafe_allow_html=True)
+    if st.button("🔄 নতুন খবর লোড করুন", use_container_width=True):
+        with st.spinner("নতুন খবর খোঁজা হচ্ছে... অনুগ্রহ করে অপেক্ষা করুন।"):
+            scrape_news()
+            st.session_state.page_num = 1 # আপডেট করলে যেন প্রথম পেজে চলে আসে
+            st.rerun()
+    st.markdown('</div><br>', unsafe_allow_html=True)
+
+    items_per_page = 12 # 🔴 পেজিনেশন ফিক্স: প্রতি পেজে ১২ টি নিউজ (৩টি কলাম x ৪ সারি)
 
     if nav_selection == "🏠 হোম পেজ":
-        st.markdown("<h3 style='color:#111827;'>সর্বশেষ সংবাদ</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='color:#111827; text-align:center;'>সর্বশেষ সংবাদ</h3>", unsafe_allow_html=True)
         c.execute("SELECT COUNT(*) FROM news_table")
         total_items = c.fetchone()[0]
         total_pages = max(1, math.ceil(total_items / items_per_page))
+        
+        # 🔴 অফসেট লজিক ঠিক করা হয়েছে
         offset = (st.session_state.page_num - 1) * items_per_page
         c.execute(f"SELECT id, translated_title, image_url, source, date FROM news_table ORDER BY date DESC LIMIT {items_per_page} OFFSET {offset}")
         all_news = c.fetchall()
     else:
         if st.session_state.bookmarks:
-            st.markdown("<h3 style='color:#111827;'>আপনার সেভ করা খবরগুলো</h3>", unsafe_allow_html=True)
+            st.markdown("<h3 style='color:#111827; text-align:center;'>আপনার সেভ করা খবরগুলো</h3>", unsafe_allow_html=True)
             placeholders = ','.join(['?'] * len(st.session_state.bookmarks))
             c.execute(f"SELECT id, translated_title, image_url, source, date FROM news_table WHERE id IN ({placeholders}) ORDER BY date DESC", st.session_state.bookmarks)
             all_news = c.fetchall()
@@ -276,6 +274,7 @@ if st.session_state.view == 'home':
                             st.session_state.view = 'details'
                             st.rerun()
 
+        # 🔴 পেজিনেশন বাটন ডিসপ্লে
         if nav_selection == "🏠 হোম পেজ" and total_pages > 1:
             st.write("---")
             p_col1, p_col2, p_col3 = st.columns([1, 2, 1])
@@ -359,11 +358,9 @@ elif st.session_state.view == 'details':
             </div>
         ''', unsafe_allow_html=True)
 
-    # 🔴 সাদা বক্সের চূড়ান্ত ফিক্স (Strict Validator)
     video_url = str(news[7]) if news[7] else ""
     valid_vid_domains = ['youtube.com', 'youtu.be', 'vimeo.com', 'twitter.com', 'x.com', 'rt.com', '.mp4']
     
-    # ডাটাবেসে হাবিজাবি লিংক থাকলেও সেটি রেন্ডার হবে না!
     if video_url and len(video_url.strip()) > 10 and any(domain in video_url.lower() for domain in valid_vid_domains):
         st.markdown("<br>", unsafe_allow_html=True)
         if 'twitter.com' in video_url or 'x.com' in video_url:
