@@ -50,7 +50,7 @@ header[data-testid="stHeader"] {{ display: none !important; }}
 p {{ color: #111827 !important; font-family: 'Hind Siliguri', sans-serif !important; }}
 
 .news-image-container {{ width: 100%; overflow: hidden; border-radius: 10px; margin-bottom: 10px; background-color: #E5E0D5; position: relative; }}
-.news-image-container img {{ width: 100%; height: 200px; display: block; object-fit: cover; }}
+.news-image-container img {{ width: 100%; height: 325px; display: block; object-fit: cover; }}
 
 .news-meta {{ color: #4B5563 !important; font-size: 14px; margin-top: 5px; font-weight: 600; }}
 
