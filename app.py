@@ -27,6 +27,7 @@ if 'font_size' not in st.session_state: st.session_state.font_size = 20
 if 'view' not in st.session_state: st.session_state.view = 'home'
 if 'page_num' not in st.session_state: st.session_state.page_num = 1
 if 'bookmarks' not in st.session_state: st.session_state.bookmarks = []
+if 'category_filter' not in st.session_state: st.session_state.category_filter = 'All' # নতুন ফিল্টার অপশন
 
 # ==========================================
 # থিম এবং ফন্ট সেটআপ
@@ -118,11 +119,12 @@ def get_bengali_date(date_str):
 # --- ডাটাবেস সেটআপ ---
 @st.cache_resource
 def init_db():
-    conn = sqlite3.connect('news_db_pro_v5.db', check_same_thread=False, timeout=30)
+    conn = sqlite3.connect('news_db_pro_v6.db', check_same_thread=False, timeout=30)
     c = conn.cursor()
+    # ক্যাটাগরি ফিল্ড যুক্ত করা হলো
     c.execute('''CREATE TABLE IF NOT EXISTS news_table
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, link TEXT, translated_title TEXT, 
-                  full_text TEXT, image_url TEXT, video_url TEXT, source TEXT, date TIMESTAMP)''')
+                  full_text TEXT, image_url TEXT, video_url TEXT, source TEXT, category TEXT, date TIMESTAMP)''')
     c.execute('''CREATE TABLE IF NOT EXISTS update_meta (last_update TIMESTAMP)''')
     conn.commit()
     return conn, c
@@ -160,9 +162,22 @@ def generate_audio(text):
     except: return None
 
 def scrape_news():
-    news_feeds = {"Al Jazeera": "https://www.aljazeera.com/xml/rss/all.xml", "TRT World": "https://www.trtworld.com/rss.xml", "RT News": "https://www.rt.com/rss/"}
+    # 🔴 টেকনোলজি নিউজ সাইটগুলো যুক্ত করা হলো
+    news_feeds = {
+        "Al Jazeera": {"url": "https://www.aljazeera.com/xml/rss/all.xml", "category": "General"},
+        "TRT World": {"url": "https://www.trtworld.com/rss.xml", "category": "General"},
+        "RT News": {"url": "https://www.rt.com/rss/", "category": "General"},
+        "TechCrunch": {"url": "https://techcrunch.com/feed/", "category": "Technology"},
+        "The Verge": {"url": "https://www.theverge.com/rss/index.xml", "category": "Technology"},
+        "Wired": {"url": "https://www.wired.com/feed/rss", "category": "Technology"}
+    }
+    
     headers = {'User-Agent': 'Mozilla/5.0'}
-    for source_name, feed_url in news_feeds.items():
+    
+    for source_name, feed_info in news_feeds.items():
+        feed_url = feed_info["url"]
+        category = feed_info["category"]
+        
         try:
             feed = feedparser.parse(feed_url)
             for entry in feed.entries[:4]: 
@@ -201,9 +216,10 @@ def scrape_news():
                         bn_title = safe_translate(entry.title)
                         bn_full_text = "".join([f"<p>{safe_translate(p.strip())}</p>" for p in full_eng_text.split('\n\n')[:10] if p.strip()])
                         
-                        c.execute('''INSERT INTO news_table (title, link, translated_title, full_text, image_url, video_url, source, date) 
-                                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)''', 
-                                  (entry.title, entry.link, bn_title, bn_full_text, img_url, video_link, source_name, datetime.now()))
+                        # 🔴 ডাটাবেসে ইনসার্ট করার সময় ক্যাটাগরি যোগ করা হলো
+                        c.execute('''INSERT INTO news_table (title, link, translated_title, full_text, image_url, video_url, source, category, date) 
+                                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''', 
+                                  (entry.title, entry.link, bn_title, bn_full_text, img_url, video_link, source_name, category, datetime.now()))
                         conn.commit()
                     except: continue
         except: continue
@@ -229,6 +245,17 @@ check_for_auto_update()
 st.sidebar.markdown("<h2 style='text-align: center; color: #D35400;'>মেনু</h2>", unsafe_allow_html=True)
 nav_selection = st.sidebar.radio("", ["🏠 হোম পেজ", "🔖 সেভ করা খবর"])
 
+# 🔴 ক্যাটাগরি ফিল্টার যোগ করা হলো
+st.sidebar.markdown("---")
+st.sidebar.markdown("<h4 style='color: #4B5563;'>ক্যাটাগরি</h4>", unsafe_allow_html=True)
+category_options = ["সব খবর", "আন্তর্জাতিক", "টেকনোলজি"]
+selected_cat = st.sidebar.selectbox("খবর ফিল্টার করুন", category_options)
+
+if selected_cat == "সব খবর": st.session_state.category_filter = 'All'
+elif selected_cat == "আন্তর্জাতিক": st.session_state.category_filter = 'General'
+elif selected_cat == "টেকনোলজি": st.session_state.category_filter = 'Technology'
+
+st.sidebar.markdown("---")
 if st.sidebar.button("🔄 খবর আপডেট করুন"):
     with st.spinner("খবর আপডেট হচ্ছে..."):
         scrape_news()
@@ -241,12 +268,26 @@ if st.session_state.view == 'home':
     items_per_page = 15
 
     if nav_selection == "🏠 হোম পেজ":
-        st.markdown("<h3 style='color:#111827;'>সর্বশেষ সংবাদ</h3>", unsafe_allow_html=True)
-        c.execute("SELECT COUNT(*) FROM news_table")
-        total_items = c.fetchone()[0]
-        total_pages = max(1, math.ceil(total_items / items_per_page))
-        offset = (st.session_state.page_num - 1) * items_per_page
-        c.execute(f"SELECT id, translated_title, image_url, source, date FROM news_table ORDER BY date DESC LIMIT {items_per_page} OFFSET {offset}")
+        cat_title = "সর্বশেষ সংবাদ"
+        if st.session_state.category_filter == 'Technology': cat_title = "সর্বশেষ প্রযুক্তি সংবাদ"
+        elif st.session_state.category_filter == 'General': cat_title = "সর্বশেষ আন্তর্জাতিক সংবাদ"
+        
+        st.markdown(f"<h3 style='color:#111827;'>{cat_title}</h3>", unsafe_allow_html=True)
+        
+        # 🔴 ডাটাবেস কোয়েরিতে ফিল্টার প্রয়োগ
+        if st.session_state.category_filter == 'All':
+            c.execute("SELECT COUNT(*) FROM news_table")
+            total_items = c.fetchone()[0]
+            total_pages = max(1, math.ceil(total_items / items_per_page))
+            offset = (st.session_state.page_num - 1) * items_per_page
+            c.execute(f"SELECT id, translated_title, image_url, source, date FROM news_table ORDER BY date DESC LIMIT {items_per_page} OFFSET {offset}")
+        else:
+            c.execute("SELECT COUNT(*) FROM news_table WHERE category=?", (st.session_state.category_filter,))
+            total_items = c.fetchone()[0]
+            total_pages = max(1, math.ceil(total_items / items_per_page))
+            offset = (st.session_state.page_num - 1) * items_per_page
+            c.execute(f"SELECT id, translated_title, image_url, source, date FROM news_table WHERE category=? ORDER BY date DESC LIMIT {items_per_page} OFFSET {offset}", (st.session_state.category_filter,))
+            
         all_news = c.fetchall()
     else:
         if st.session_state.bookmarks:
@@ -296,9 +337,10 @@ if st.session_state.view == 'home':
 
 # --- ২. বিস্তারিত পেইজ ---
 elif st.session_state.view == 'details':
-    c.execute("SELECT id, translated_title, image_url, source, date, full_text, link, video_url FROM news_table WHERE id=?", (st.session_state.selected_news_id,))
+    c.execute("SELECT id, translated_title, image_url, source, date, full_text, link, video_url, category FROM news_table WHERE id=?", (st.session_state.selected_news_id,))
     news = c.fetchone()
     news_id = news[0]
+    category = news[8]
     
     t1, t2, t3 = st.columns([1, 2, 1])
     with t1:
@@ -334,10 +376,14 @@ elif st.session_state.view == 'details':
     read_time = max(1, word_count // 150)
     bn_read_time = eng_to_bn_num(read_time)
     bn_date_details = get_bengali_date(news[4])
+    
+    # ক্যাটাগরি ব্যাজ
+    cat_badge = "প্রযুক্তি" if category == "Technology" else "আন্তর্জাতিক"
 
     st.markdown(f"""
         <div class="content-box">
             <div style="text-align: center;">
+                <span style="background-color: {accent_color}; color: white; padding: 3px 10px; border-radius: 4px; font-size: 12px; font-weight: bold; margin-bottom: 10px; display: inline-block;">{cat_badge}</span>
                 <h1 class="article-title">{news[1]}</h1>
                 <div class="read-time-badge">⏱️ পড়তে সময় লাগবে প্রায় {bn_read_time} মিনিট</div>
                 <p style='color: #4B5563; font-weight: 600;'>সোর্স: {news[3]} | {bn_date_details}</p>
@@ -399,7 +445,7 @@ elif st.session_state.view == 'details':
         st.markdown('</div>', unsafe_allow_html=True)
         
     with bottom_col2:
-        c.execute("SELECT id FROM news_table WHERE id < ? ORDER BY id DESC LIMIT 1", (news_id,))
+        c.execute("SELECT id FROM news_table WHERE id < ? AND category=? ORDER BY id DESC LIMIT 1", (news_id, category))
         next_news = c.fetchone()
         if next_news:
             st.markdown('<div class="nav-btn">', unsafe_allow_html=True)
@@ -409,7 +455,7 @@ elif st.session_state.view == 'details':
             st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown("<h3 style='text-align: center; margin-top: 50px; margin-bottom: 20px; color: #D35400;'>⚡ এই সম্পর্কিত আরও খবর</h3>", unsafe_allow_html=True)
-    c.execute("SELECT id, translated_title, image_url, source, date FROM news_table WHERE source=? AND id!=? ORDER BY date DESC LIMIT 3", (news[3], news_id))
+    c.execute("SELECT id, translated_title, image_url, source, date FROM news_table WHERE category=? AND id!=? ORDER BY date DESC LIMIT 3", (category, news_id))
     related = c.fetchall()
     
     if related:
