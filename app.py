@@ -173,7 +173,10 @@ def scrape_news():
         "RT News": {"url": "https://www.rt.com/rss/", "category": "General"},
         "TechCrunch": {"url": "https://techcrunch.com/feed/", "category": "Technology"},
         "The Verge": {"url": "https://www.theverge.com/rss/index.xml", "category": "Technology"},
-        "Wired": {"url": "https://www.wired.com/feed/rss", "category": "Technology"}
+        "Ars Technica": {"url": "http://feeds.arstechnica.com/arstechnica/index", "category": "Technology"},
+        "Space.com": {"url": "https://www.space.com/feeds/all", "category": "Technology"},
+        "Pandaily": {"url": "https://pandaily.com/feed/", "category": "Business"},
+        "TechNode": {"url": "https://technode.com/feed/", "category": "Business"}
     }
     
     headers = {'User-Agent': 'Mozilla/5.0'}
@@ -264,7 +267,7 @@ if st.session_state.view == 'home':
     if nav_selection == "🏠 হোম পেজ":
         
         # --- ক্যাটাগরি বাটন ---
-        cat_cols = st.columns(3)
+        cat_cols = st.columns(4)
         with cat_cols[0]:
             cls = "cat-btn-active" if st.session_state.category_filter == 'General' else "cat-btn"
             st.markdown(f'<div class="{cls}">', unsafe_allow_html=True)
@@ -284,6 +287,15 @@ if st.session_state.view == 'home':
             st.markdown('</div>', unsafe_allow_html=True)
             
         with cat_cols[2]:
+            cls = "cat-btn-active" if st.session_state.category_filter == 'Business' else "cat-btn"
+            st.markdown(f'<div class="{cls}">', unsafe_allow_html=True)
+            if st.button("📈 বাণিজ্য ও মার্কেট", key="cat_bus", use_container_width=True):
+                st.session_state.category_filter = 'Business'
+                st.session_state.page_num = 1
+                st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+        with cat_cols[3]:
             cls = "cat-btn-active" if st.session_state.category_filter == 'All' else "cat-btn"
             st.markdown(f'<div class="{cls}">', unsafe_allow_html=True)
             if st.button("📰 সব খবর", key="cat_all", use_container_width=True):
@@ -297,6 +309,7 @@ if st.session_state.view == 'home':
         cat_title = "সর্বশেষ সংবাদ"
         if st.session_state.category_filter == 'Technology': cat_title = "সর্বশেষ প্রযুক্তি সংবাদ"
         elif st.session_state.category_filter == 'General': cat_title = "সর্বশেষ আন্তর্জাতিক ও রাজনীতি সংবাদ"
+        elif st.session_state.category_filter == 'Business': cat_title = "সর্বশেষ বাণিজ্য ও মার্কেট সংবাদ"
         
         st.markdown(f"<h3 style='color:#111827;'>{cat_title}</h3>", unsafe_allow_html=True)
         
@@ -306,7 +319,7 @@ if st.session_state.view == 'home':
             total_items = c.fetchone()[0]
             total_pages = max(1, math.ceil(total_items / items_per_page))
             offset = (st.session_state.page_num - 1) * items_per_page
-            c.execute(f"SELECT id, translated_title, image_url, source, date FROM news_table ORDER BY CASE WHEN category='General' THEN 1 ELSE 2 END, date DESC LIMIT {items_per_page} OFFSET {offset}")
+            c.execute(f"SELECT id, translated_title, image_url, source, date FROM news_table ORDER BY CASE WHEN category='General' THEN 1 WHEN category='Technology' THEN 2 WHEN category='Business' THEN 3 ELSE 4 END, date DESC LIMIT {items_per_page} OFFSET {offset}")
         else:
             c.execute("SELECT COUNT(*) FROM news_table WHERE category=?", (st.session_state.category_filter,))
             total_items = c.fetchone()[0]
@@ -404,7 +417,9 @@ elif st.session_state.view == 'details':
     bn_date_details = get_bengali_date(news[4])
     
     # ক্যাটাগরি ব্যাজ
-    cat_badge = "প্রযুক্তি" if category == "Technology" else "আন্তর্জাতিক"
+    cat_badge = "আন্তর্জাতিক"
+    if category == "Technology": cat_badge = "প্রযুক্তি"
+    elif category == "Business": cat_badge = "বাণিজ্য"
 
     st.markdown(f"""
         <div class="content-box">
