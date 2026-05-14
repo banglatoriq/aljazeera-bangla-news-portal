@@ -27,7 +27,7 @@ if 'font_size' not in st.session_state: st.session_state.font_size = 20
 if 'view' not in st.session_state: st.session_state.view = 'home'
 if 'page_num' not in st.session_state: st.session_state.page_num = 1
 if 'bookmarks' not in st.session_state: st.session_state.bookmarks = []
-if 'category_filter' not in st.session_state: st.session_state.category_filter = 'All' # নতুন ফিল্টার অপশন
+if 'category_filter' not in st.session_state: st.session_state.category_filter = 'General' # নতুন ফিল্টার অপশন
 
 # ==========================================
 # থিম এবং ফন্ট সেটআপ
@@ -78,6 +78,10 @@ p {{ color: #111827 !important; font-family: 'Hind Siliguri', sans-serif !import
 .content-box {{ background-color: #FFFBF0; padding: 30px; border-radius: 16px; border: 1px solid #E5E0D5; margin-bottom: 20px; max-width: 850px; margin-left: auto; margin-right: auto; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }}
 .tldr-box {{ background-color: #F0FDF4; border-left: 5px solid #22C55E; padding: 15px 20px; border-radius: 0 10px 10px 0; margin-bottom: 25px; }}
 .tldr-title {{ color: #166534; font-weight: 700; font-size: 18px; margin-bottom: 5px; display: flex; align-items: center; gap: 5px; }}
+
+.cat-btn button {{ background-color: #E5E0D5 !important; color: #111827 !important; padding: 10px !important; border-radius: 8px !important; text-align: center !important; transition: 0.3s; }}
+.cat-btn button:hover {{ background-color: {accent_color} !important; color: white !important; }}
+.cat-btn-active button {{ background-color: {accent_color} !important; color: white !important; padding: 10px !important; border-radius: 8px !important; text-align: center !important; }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -245,16 +249,6 @@ check_for_auto_update()
 st.sidebar.markdown("<h2 style='text-align: center; color: #D35400;'>মেনু</h2>", unsafe_allow_html=True)
 nav_selection = st.sidebar.radio("", ["🏠 হোম পেজ", "🔖 সেভ করা খবর"])
 
-# 🔴 ক্যাটাগরি ফিল্টার যোগ করা হলো
-st.sidebar.markdown("---")
-st.sidebar.markdown("<h4 style='color: #4B5563;'>ক্যাটাগরি</h4>", unsafe_allow_html=True)
-category_options = ["সব খবর", "আন্তর্জাতিক", "টেকনোলজি"]
-selected_cat = st.sidebar.selectbox("খবর ফিল্টার করুন", category_options)
-
-if selected_cat == "সব খবর": st.session_state.category_filter = 'All'
-elif selected_cat == "আন্তর্জাতিক": st.session_state.category_filter = 'General'
-elif selected_cat == "টেকনোলজি": st.session_state.category_filter = 'Technology'
-
 st.sidebar.markdown("---")
 if st.sidebar.button("🔄 খবর আপডেট করুন"):
     with st.spinner("খবর আপডেট হচ্ছে..."):
@@ -268,9 +262,41 @@ if st.session_state.view == 'home':
     items_per_page = 15
 
     if nav_selection == "🏠 হোম পেজ":
+        
+        # --- ক্যাটাগরি বাটন ---
+        cat_cols = st.columns(3)
+        with cat_cols[0]:
+            cls = "cat-btn-active" if st.session_state.category_filter == 'General' else "cat-btn"
+            st.markdown(f'<div class="{cls}">', unsafe_allow_html=True)
+            if st.button("🌍 আন্তর্জাতিক ও রাজনীতি", key="cat_pol", use_container_width=True):
+                st.session_state.category_filter = 'General'
+                st.session_state.page_num = 1
+                st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+        with cat_cols[1]:
+            cls = "cat-btn-active" if st.session_state.category_filter == 'Technology' else "cat-btn"
+            st.markdown(f'<div class="{cls}">', unsafe_allow_html=True)
+            if st.button("💻 প্রযুক্তি সংবাদ", key="cat_tech", use_container_width=True):
+                st.session_state.category_filter = 'Technology'
+                st.session_state.page_num = 1
+                st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+        with cat_cols[2]:
+            cls = "cat-btn-active" if st.session_state.category_filter == 'All' else "cat-btn"
+            st.markdown(f'<div class="{cls}">', unsafe_allow_html=True)
+            if st.button("📰 সব খবর", key="cat_all", use_container_width=True):
+                st.session_state.category_filter = 'All'
+                st.session_state.page_num = 1
+                st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+        st.write("---")
+
         cat_title = "সর্বশেষ সংবাদ"
         if st.session_state.category_filter == 'Technology': cat_title = "সর্বশেষ প্রযুক্তি সংবাদ"
-        elif st.session_state.category_filter == 'General': cat_title = "সর্বশেষ আন্তর্জাতিক সংবাদ"
+        elif st.session_state.category_filter == 'General': cat_title = "সর্বশেষ আন্তর্জাতিক ও রাজনীতি সংবাদ"
         
         st.markdown(f"<h3 style='color:#111827;'>{cat_title}</h3>", unsafe_allow_html=True)
         
@@ -280,7 +306,7 @@ if st.session_state.view == 'home':
             total_items = c.fetchone()[0]
             total_pages = max(1, math.ceil(total_items / items_per_page))
             offset = (st.session_state.page_num - 1) * items_per_page
-            c.execute(f"SELECT id, translated_title, image_url, source, date FROM news_table ORDER BY date DESC LIMIT {items_per_page} OFFSET {offset}")
+            c.execute(f"SELECT id, translated_title, image_url, source, date FROM news_table ORDER BY CASE WHEN category='General' THEN 1 ELSE 2 END, date DESC LIMIT {items_per_page} OFFSET {offset}")
         else:
             c.execute("SELECT COUNT(*) FROM news_table WHERE category=?", (st.session_state.category_filter,))
             total_items = c.fetchone()[0]
