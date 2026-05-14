@@ -319,7 +319,7 @@ if st.session_state.view == 'home':
             total_items = c.fetchone()[0]
             total_pages = max(1, math.ceil(total_items / items_per_page))
             offset = (st.session_state.page_num - 1) * items_per_page
-            c.execute(f"SELECT id, translated_title, image_url, source, date FROM news_table ORDER BY CASE WHEN category='General' THEN 1 WHEN category='Technology' THEN 2 WHEN category='Business' THEN 3 ELSE 4 END, date DESC LIMIT {items_per_page} OFFSET {offset}")
+            c.execute(f"SELECT id, translated_title, image_url, source, date FROM news_table ORDER BY date DESC LIMIT {items_per_page} OFFSET {offset}")
         else:
             c.execute("SELECT COUNT(*) FROM news_table WHERE category=?", (st.session_state.category_filter,))
             total_items = c.fetchone()[0]
