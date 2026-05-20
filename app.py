@@ -67,6 +67,10 @@ p {{ color: #111827 !important; font-family: 'Hind Siliguri', sans-serif !import
 .nav-btn > button:hover {{ background-color: {accent_color} !important; color: white !important; transform: none !important; }}
 .top-home-btn > button {{ background-color: #111827 !important; color: white !important; padding: 5px 15px !important; border-radius: 6px !important; font-size: 16px !important; text-align: center !important; }}
 .top-home-btn > button:hover {{ background-color: {accent_color} !important; }}
+button[kind="secondary"][data-testid*="home_refresh_btn"] {{ background-color: #22C55E !important; color: white !important; }}
+div[data-testid="stButton"]:has(button[key="home_refresh_btn"]) > button {{ background-color: #22C55E !important; color: white !important; border-radius: 8px !important; padding: 10px !important; font-size: 16px !important; text-align: center !important; }}
+.refresh-btn > button {{ background-color: #22C55E !important; color: white !important; padding: 10px !important; border-radius: 8px !important; text-align: center !important; font-size: 16px !important; }}
+.refresh-btn > button:hover {{ background-color: #16A34A !important; transform: none !important; }}
 .article-title {{ line-height: 1.3; color: #000000 !important; text-align: center; margin-bottom: 10px; font-weight: 800; font-size: 34px; }}
 .share-btn {{ display: inline-flex; align-items: center; justify-content: center; padding: 8px 15px; border-radius: 5px; color: white !important; text-decoration: none; font-size: 14px; font-weight: 600; margin-right: 10px; transition: 0.2s; }}
 .share-btn:hover {{ opacity: 0.8; transform: translateY(-2px); }}
@@ -154,113 +158,89 @@ conn, c = init_db()
 
 
 # ==========================================
-# 🌟 Claude API দিয়ে বাংলা অনুবাদ (মূল উন্নতি)
+# � বিনামূল্যে প্রাকৃতিক বাংলা অনুবাদ
 # ==========================================
-def claude_translate(text, is_title=False):
+
+def _chunk_text(text, max_chars=4500):
     """
-    Claude claude-sonnet-4-20250514 দিয়ে উচ্চমানের বাংলা অনুবাদ।
-    টোকেন সাশ্রয়ের জন্য max_tokens স্মার্টলি সেট করা হয়েছে।
+    টেক্সটকে বাক্যের সীমানায় ভেঙে চাংক তৈরি করে।
+    এতে অনুবাদ আরও প্রাকৃতিক হয়।
+    """
+    if len(text) <= max_chars:
+        return [text]
+
+    chunks = []
+    current = ""
+    # বাক্যের শেষে (., !, ?) ভাঙো
+    sentences = re.split(r'(?<=[.!?])\s+', text)
+    for sentence in sentences:
+        if len(current) + len(sentence) + 1 < max_chars:
+            current += sentence + " "
+        else:
+            if current.strip():
+                chunks.append(current.strip())
+            # একটি বাক্য নিজেই অনেক বড় হলে শব্দে ভাঙো
+            if len(sentence) >= max_chars:
+                words = sentence.split()
+                sub = ""
+                for w in words:
+                    if len(sub) + len(w) + 1 < max_chars:
+                        sub += w + " "
+                    else:
+                        if sub.strip():
+                            chunks.append(sub.strip())
+                        sub = w + " "
+                if sub.strip():
+                    chunks.append(sub.strip())
+                current = ""
+            else:
+                current = sentence + " "
+    if current.strip():
+        chunks.append(current.strip())
+    return chunks
+
+
+def google_translate(text, retries=3):
+    """
+    deep_translator → Google Translate দিয়ে প্রাকৃতিক বাংলা অনুবাদ।
+    সম্পূর্ণ বিনামূল্যে। বাক্য-স্তরে অনুবাদ করে, শব্দ-স্তরে নয়।
     """
     if not text or not text.strip():
-        return "", "none"
+        return text
 
-    try:
-        # টোকেন সীমা: শিরোনামের জন্য কম, বডির জন্য বেশি
-        if is_title:
-            max_tok = 120
-            system_prompt = (
-                "You are a professional Bengali (বাংলা) translator. "
-                "Translate the given English news headline into natural, fluent Bengali. "
-                "Output ONLY the Bengali translation — no explanation, no quotes, no extra text."
-            )
-        else:
-            max_tok = 1800
-            system_prompt = (
-                "You are a professional Bengali (বাংলা) news translator. "
-                "Translate the given English news article text into natural, fluent, journalistic Bengali. "
-                "Preserve paragraph structure. Use proper Bengali punctuation (।). "
-                "Keep proper nouns (names, places) transliterated in Bengali. "
-                "Output ONLY the Bengali translation — no explanation, no preamble."
-            )
-
-        response = requests.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={"Content-Type": "application/json"},
-            json={
-                "model": "claude-sonnet-4-20250514",
-                "max_tokens": max_tok,
-                "system": system_prompt,
-                "messages": [{"role": "user", "content": text}]
-            },
-            timeout=30
-        )
-
-        if response.status_code == 200:
-            data = response.json()
-            translated = data["content"][0]["text"].strip()
-            return eng_to_bn_num(translated), "claude"
-
-        # রেট লিমিট বা অন্য এরর হলে fallback
-        elif response.status_code == 429:
-            # Retry after brief wait
-            time.sleep(3)
-            return google_translate_fallback(text), "google"
-        else:
-            return google_translate_fallback(text), "google"
-
-    except Exception as e:
-        return google_translate_fallback(text), "google"
-
-
-def google_translate_fallback(text):
-    """Google Translate ফলব্যাক — ছোট চাংকে ভেঙে অনুবাদ করে।"""
-    if not text or not text.strip():
-        return ""
     try:
         from deep_translator import GoogleTranslator
-        translator = GoogleTranslator(source='en', target='bn')
-
-        # ৪৫০০ ক্যারেক্টারের বেশি হলে চাংকে ভাগ করো
-        if len(text) <= 4500:
-            result = translator.translate(text)
-            return eng_to_bn_num(result) if result else text
-
-        # স্মার্ট চাংকিং: বাক্যের শেষে ভাঙো
-        chunks = []
-        current = ""
-        for sentence in re.split(r'(?<=[.!?])\s+', text):
-            if len(current) + len(sentence) < 4500:
-                current += sentence + " "
-            else:
-                if current.strip():
-                    chunks.append(current.strip())
-                current = sentence + " "
-        if current.strip():
-            chunks.append(current.strip())
-
+        translator = GoogleTranslator(source='auto', target='bn')
+        chunks = _chunk_text(text.strip())
         translated_parts = []
+
         for chunk in chunks:
-            try:
-                part = translator.translate(chunk)
-                translated_parts.append(part if part else chunk)
-                time.sleep(0.5)  # Google rate limit এড়াতে
-            except:
-                translated_parts.append(chunk)
+            for attempt in range(retries):
+                try:
+                    result = translator.translate(chunk)
+                    translated_parts.append(result if result else chunk)
+                    break
+                except Exception:
+                    if attempt < retries - 1:
+                        time.sleep(1.5)
+                    else:
+                        translated_parts.append(chunk)
+            time.sleep(0.4)  # Google rate limit এড়াতে
 
         return eng_to_bn_num(" ".join(translated_parts))
-    except:
+    except Exception:
         return text
 
 
 def safe_translate(text, is_title=False):
     """
-    মূল অনুবাদ ফাংশন।
-    Claude API → Google Translate ফলব্যাক।
+    মূল অনুবাদ ফাংশন — Google Translate (বিনামূল্যে, প্রাকৃতিক বাংলা)।
+    শিরোনাম ও বডি উভয়ের জন্য একই পদ্ধতি, তবে শিরোনামে ছোট ইনপুট।
     """
     if not text or not text.strip():
         return "", "none"
-    result, method = claude_translate(text, is_title=is_title)
-    return result, method
+    result = google_translate(text)
+    return result, "google"
 
 
 # ==========================================
@@ -291,15 +271,33 @@ def generate_audio(text):
 # ==========================================
 def scrape_news():
     news_feeds = {
-        "Al Jazeera":   {"url": "https://www.aljazeera.com/xml/rss/all.xml",          "category": "General"},
-        "TRT World":    {"url": "https://www.trtworld.com/rss.xml",                    "category": "General"},
-        "RT News":      {"url": "https://www.rt.com/rss/",                             "category": "General"},
-        "TechCrunch":   {"url": "https://techcrunch.com/feed/",                        "category": "Technology"},
-        "The Verge":    {"url": "https://www.theverge.com/rss/index.xml",              "category": "Technology"},
-        "Ars Technica": {"url": "http://feeds.arstechnica.com/arstechnica/index",      "category": "Technology"},
-        "Space.com":    {"url": "https://www.space.com/feeds/all",                     "category": "Technology"},
-        "Pandaily":     {"url": "https://pandaily.com/feed/",                          "category": "Business"},
-        "TechNode":     {"url": "https://technode.com/feed/",                          "category": "Business"},
+        # ── আন্তর্জাতিক ও রাজনীতি ──────────────────────────────────────────
+        "Al Jazeera":        {"url": "https://www.aljazeera.com/xml/rss/all.xml",                    "category": "General"},
+        "TRT World":         {"url": "https://www.trtworld.com/rss.xml",                             "category": "General"},
+        "RT News":           {"url": "https://www.rt.com/rss/",                                      "category": "General"},
+        "Reuters World":     {"url": "https://feeds.reuters.com/reuters/worldNews",                  "category": "General"},
+        "BBC World":         {"url": "https://feeds.bbci.co.uk/news/world/rss.xml",                  "category": "General"},
+        "DW News":           {"url": "https://rss.dw.com/rdf/rss-en-all",                            "category": "General"},
+        "France 24":         {"url": "https://www.france24.com/en/rss",                              "category": "General"},
+        "The Guardian World":{"url": "https://www.theguardian.com/world/rss",                        "category": "General"},
+        "Sky News":          {"url": "https://feeds.skynews.com/feeds/rss/world.xml",                "category": "General"},
+        "Euronews":          {"url": "https://www.euronews.com/rss?format=mrss&level=theme&name=news","category": "General"},
+        # ── প্রযুক্তি ────────────────────────────────────────────────────────
+        "TechCrunch":        {"url": "https://techcrunch.com/feed/",                                 "category": "Technology"},
+        "The Verge":         {"url": "https://www.theverge.com/rss/index.xml",                       "category": "Technology"},
+        "Ars Technica":      {"url": "http://feeds.arstechnica.com/arstechnica/index",               "category": "Technology"},
+        "Space.com":         {"url": "https://www.space.com/feeds/all",                              "category": "Technology"},
+        "Wired":             {"url": "https://www.wired.com/feed/rss",                               "category": "Technology"},
+        "MIT Tech Review":   {"url": "https://www.technologyreview.com/feed/",                       "category": "Technology"},
+        "Engadget":          {"url": "https://www.engadget.com/rss.xml",                             "category": "Technology"},
+        "ZDNet":             {"url": "https://www.zdnet.com/news/rss.xml",                           "category": "Technology"},
+        # ── বাণিজ্য ──────────────────────────────────────────────────────────
+        "Pandaily":          {"url": "https://pandaily.com/feed/",                                   "category": "Business"},
+        "TechNode":          {"url": "https://technode.com/feed/",                                   "category": "Business"},
+        "Reuters Business":  {"url": "https://feeds.reuters.com/reuters/businessNews",               "category": "Business"},
+        "BBC Business":      {"url": "https://feeds.bbci.co.uk/news/business/rss.xml",               "category": "Business"},
+        "Forbes":            {"url": "https://www.forbes.com/business/feed/",                        "category": "Business"},
+        "CNBC":              {"url": "https://www.cnbc.com/id/100003114/device/rss/rss.html",        "category": "Business"},
     }
     headers = {'User-Agent': 'Mozilla/5.0'}
     new_count = 0
@@ -353,26 +351,14 @@ def scrape_news():
                 if not full_eng_text:
                     continue
 
-                # ===== Claude দিয়ে অনুবাদ =====
+                # ===== Google Translate দিয়ে প্রাকৃতিক বাংলা অনুবাদ =====
                 bn_title, title_method = safe_translate(entry.title, is_title=True)
 
-                # বডি টেক্সট: প্রথম ১০টি প্যারাগ্রাফ, একসাথে অনুবাদ (টোকেন সাশ্রয়)
+                # বডি টেক্সট: প্রথম ১০টি প্যারাগ্রাফ একসাথে অনুবাদ
                 para_list = [p.strip() for p in full_eng_text.split('\n\n') if p.strip()][:10]
                 combined_eng = "\n\n".join(para_list)
-
-                # ২০০০ ক্যারেক্টারের বেশি হলে দুই ভাগে অনুবাদ
-                if len(combined_eng) <= 2000:
-                    bn_combined, body_method = safe_translate(combined_eng)
-                    bn_paras = bn_combined.split('\n\n') if bn_combined else para_list
-                else:
-                    mid = len(para_list) // 2
-                    part1 = "\n\n".join(para_list[:mid])
-                    part2 = "\n\n".join(para_list[mid:])
-                    bn1, _ = safe_translate(part1)
-                    time.sleep(1)  # API রেট লিমিট
-                    bn2, body_method = safe_translate(part2)
-                    combined_bn = (bn1 or "") + "\n\n" + (bn2 or "")
-                    bn_paras = combined_bn.split('\n\n')
+                bn_combined, body_method = safe_translate(combined_eng)
+                bn_paras = [p for p in bn_combined.split('\n\n') if p.strip()] if bn_combined else para_list
 
                 bn_full_text = "".join([f"<p>{p.strip()}</p>" for p in bn_paras if p.strip()])
 
@@ -386,9 +372,6 @@ def scrape_news():
                 )
                 conn.commit()
                 new_count += 1
-
-                # Claude API কল এর মাঝে ছোট বিরতি
-                time.sleep(1.5)
 
             except Exception:
                 continue
@@ -439,9 +422,9 @@ if st.sidebar.button("🔄 খবর আপডেট করুন"):
 st.sidebar.markdown("---")
 st.sidebar.markdown("""
 <div style='font-size: 12px; color: #6B7280; text-align: center;'>
-🤖 <b>AI অনুবাদ চালু</b><br>
-Claude Sonnet দ্বারা পরিচালিত<br>
-উচ্চমানের বাংলা অনুবাদ
+🌐 <b>Google Translate চালু</b><br>
+বিনামূল্যে প্রাকৃতিক বাংলা অনুবাদ<br>
+সম্পূর্ণ ফ্রি সার্ভিস
 </div>
 """, unsafe_allow_html=True)
 
@@ -454,6 +437,21 @@ if st.session_state.view == 'home':
     items_per_page = 15
 
     if nav_selection == "🏠 হোম পেজ":
+
+        # ── রিফ্রেশ বাটন (হোম পেজের শীর্ষে) ──────────────────────────────
+        refresh_col1, refresh_col2, refresh_col3 = st.columns([2, 1, 2])
+        with refresh_col2:
+            st.markdown('<div class="refresh-btn">', unsafe_allow_html=True)
+            if st.button("🔄 নতুন খবর লোড করুন", use_container_width=True, key="home_refresh_btn"):
+                with st.spinner("নতুন খবর আনা হচ্ছে এবং বাংলায় অনুবাদ হচ্ছে..."):
+                    count = scrape_news()
+                    if count > 0:
+                        st.success(f"✅ {count}টি নতুন খবর যোগ হয়েছে!")
+                    else:
+                        st.info("ℹ️ এই মুহূর্তে কোনো নতুন খবর নেই।")
+                    st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
+        st.write("")
 
         # ক্যাটাগরি বাটন
         cat_cols = st.columns(4)
@@ -610,7 +608,7 @@ elif st.session_state.view == 'details':
     cat_badge = cat_badge_map.get(category, "সংবাদ")
 
     # অনুবাদ পদ্ধতির ব্যাজ
-    method_badge = '<span class="translate-badge ai">🤖 AI অনুবাদ</span>' if translation_meth == "claude" else '<span class="translate-badge">🔄 স্বয়ংক্রিয় অনুবাদ</span>'
+    method_badge = '<span class="translate-badge ai">🌐 Google অনুবাদ</span>'
 
     st.markdown(f"""
         <div class="content-box">
