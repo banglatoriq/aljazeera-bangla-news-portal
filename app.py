@@ -84,11 +84,11 @@ h1,h2,h3,h4 {{ color: {text_color} !important; }}
 }}
 .ticker-content {{
     display: inline-block; white-space: nowrap;
-    animation: ticker-scroll 40s linear infinite;
+    animation: ticker-scroll 90s linear infinite;
     color: #fff; font-size: 15px; font-weight: 600; vertical-align: middle;
 }}
 @keyframes ticker-scroll {{
-    0%   {{ transform: translateX(100vw); }}
+    0%   {{ transform: translateX(60vw); }}
     100% {{ transform: translateX(-100%); }}
 }}
 
@@ -96,9 +96,8 @@ h1,h2,h3,h4 {{ color: {text_color} !important; }}
 .breaking-badge {{
     background: #EF4444; color: #fff; font-size: 11px; font-weight: 700;
     padding: 2px 8px; border-radius: 4px; margin-right: 6px;
-    display: inline-block; animation: blink 1.2s step-start infinite;
+    display: inline-block;
 }}
-@keyframes blink {{ 50% {{ opacity: 0; }} }}
 
 /* ── trending badge ── */
 .trending-badge {{
@@ -264,9 +263,14 @@ def get_bengali_date(date_str):
 def is_breaking(date_str):
     """২ ঘণ্টার মধ্যে যোগ হলে ব্রেকিং"""
     try:
-        fmt = '%Y-%m-%d %H:%M:%S.%f' if '.' in str(date_str) else '%Y-%m-%d %H:%M:%S'
-        dt = datetime.strptime(str(date_str), fmt)
-        return datetime.now() - dt < timedelta(hours=2)
+        s = str(date_str).strip()
+        if not s or s == 'None':
+            return False
+        fmt = '%Y-%m-%d %H:%M:%S.%f' if '.' in s else '%Y-%m-%d %H:%M:%S'
+        dt = datetime.strptime(s, fmt)
+        diff = datetime.now() - dt
+        # শুধুমাত্র ০ থেকে ২ ঘণ্টার মধ্যে হলে ব্রেকিং
+        return timedelta(0) <= diff <= timedelta(hours=2)
     except:
         return False
 
@@ -625,162 +629,156 @@ def show_news_grid(news_list):
 
 
 # ==========================================
-# ১. হোম পেইজ
+# ১–৪. নেভিগেশন পেইজ (details view-এ দেখাবে না)
 # ==========================================
 items_per_page = 15
 
-if nav_selection == "🏠 হোম পেজ":
-    st.session_state.search_active = False
-    show_logo()
-    show_ticker()
+if st.session_state.view != 'details':
 
-    # রিফ্রেশ বাটন
-    rc1, rc2, rc3 = st.columns([2, 1, 2])
-    with rc2:
-        st.markdown('<div class="refresh-btn">', unsafe_allow_html=True)
-        if st.button("🔄 নতুন খবর লোড করুন", use_container_width=True, key="home_refresh_btn"):
-            with st.spinner("নতুন খবর আনা হচ্ছে..."):
-                count = scrape_news()
-                st.success(f"✅ {count}টি নতুন খবর যোগ হয়েছে!" if count > 0 else "ℹ️ কোনো নতুন খবর নেই।")
-                st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-    st.write("")
+    # ── হোম পেইজ ──────────────────────────────────────────────────────────
+    if nav_selection == "🏠 হোম পেজ":
+        st.session_state.search_active = False
+        show_logo()
+        show_ticker()
 
-    show_category_buttons()
-    st.write("---")
-
-    cat_title_map = {
-        'General':    "সর্বশেষ আন্তর্জাতিক ও রাজনীতি সংবাদ",
-        'Technology': "সর্বশেষ প্রযুক্তি সংবাদ",
-        'Business':   "সর্বশেষ বাণিজ্য ও মার্কেট সংবাদ",
-        'Science':    "সর্বশেষ বিজ্ঞান সংবাদ",
-        'Sports':     "সর্বশেষ খেলাধুলার সংবাদ",
-        'All':        "সর্বশেষ সকল সংবাদ",
-    }
-    st.markdown(f"<h3 style='color:{text_color};'>{cat_title_map.get(st.session_state.category_filter,'সর্বশেষ সংবাদ')}</h3>", unsafe_allow_html=True)
-
-    if st.session_state.category_filter == 'All':
-        c.execute("SELECT COUNT(*) FROM news_table")
-        total_items = c.fetchone()[0]
-        total_pages = max(1, math.ceil(total_items / items_per_page))
-        offset = (st.session_state.page_num - 1) * items_per_page
-        c.execute("SELECT id,translated_title,image_url,source,date,view_count FROM news_table ORDER BY date DESC LIMIT ? OFFSET ?",
-                  (items_per_page, offset))
-    else:
-        c.execute("SELECT COUNT(*) FROM news_table WHERE category=?", (st.session_state.category_filter,))
-        total_items = c.fetchone()[0]
-        total_pages = max(1, math.ceil(total_items / items_per_page))
-        offset = (st.session_state.page_num - 1) * items_per_page
-        c.execute("SELECT id,translated_title,image_url,source,date,view_count FROM news_table WHERE category=? ORDER BY date DESC LIMIT ? OFFSET ?",
-                  (st.session_state.category_filter, items_per_page, offset))
-    all_news = c.fetchall()
-
-    if all_news:
-        show_news_grid(all_news)
-        if total_pages > 1:
-            st.write("---")
-            pc1, pc2, pc3 = st.columns([1, 2, 1])
-            with pc2:
-                bc1, tc, bc2 = st.columns([1, 1, 1])
-                with bc1:
-                    if st.session_state.page_num > 1:
-                        if st.button("⬅️ আগের পাতা", use_container_width=True):
-                            st.session_state.page_num -= 1; st.rerun()
-                with tc:
-                    st.markdown(f"<div style='text-align:center;margin-top:8px;font-weight:bold;color:{meta_color};'>পৃষ্ঠা {eng_to_bn_num(st.session_state.page_num)} / {eng_to_bn_num(total_pages)}</div>", unsafe_allow_html=True)
-                with bc2:
-                    if st.session_state.page_num < total_pages:
-                        if st.button("পরের পাতা ➡️", use_container_width=True):
-                            st.session_state.page_num += 1; st.rerun()
-    else:
-        st.info("এই মুহূর্তে কোনো খবর নেই। সাইডবার থেকে 'খবর আপডেট করুন' বাটনে ক্লিক করুন।")
-
-
-# ==========================================
-# ২. সার্চ পেইজ
-# ==========================================
-elif nav_selection == "🔍 খবর খুঁজুন":
-    show_logo()
-    st.markdown(f"<h3 style='color:{text_color};text-align:center;'>🔍 খবর খুঁজুন</h3>", unsafe_allow_html=True)
-
-    search_input = st.text_input("বাংলা বা ইংরেজিতে কীওয়ার্ড লিখুন...", value=st.session_state.search_query,
-                                  placeholder="যেমন: ফিলিস্তিন, AI, cricket...", key="search_box",
-                                  label_visibility="collapsed")
-
-    sc1, sc2, sc3 = st.columns([2, 1, 2])
-    with sc2:
-        st.markdown('<div class="refresh-btn">', unsafe_allow_html=True)
-        search_clicked = st.button("🔍 খুঁজুন", use_container_width=True, key="search_btn")
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    if search_clicked and search_input.strip():
-        st.session_state.search_query  = search_input.strip()
-        st.session_state.search_active = True
-
-    if st.session_state.search_active and st.session_state.search_query:
-        q = f"%{st.session_state.search_query}%"
-        c.execute("""SELECT id,translated_title,image_url,source,date,view_count
-                     FROM news_table
-                     WHERE translated_title LIKE ? OR title LIKE ?
-                     ORDER BY date DESC LIMIT 30""", (q, q))
-        results = c.fetchall()
-        st.markdown(f"<p style='color:{meta_color};'>'{st.session_state.search_query}' — {eng_to_bn_num(len(results))}টি ফলাফল পাওয়া গেছে</p>", unsafe_allow_html=True)
-        if results:
-            show_news_grid(results)
-        else:
-            st.warning("কোনো ফলাফল পাওয়া যায়নি। অন্য কীওয়ার্ড দিয়ে চেষ্টা করুন।")
-
-
-# ==========================================
-# ৩. ট্রেন্ডিং পেইজ
-# ==========================================
-elif nav_selection == "🔥 ট্রেন্ডিং":
-    show_logo()
-    st.markdown(f"<h3 style='color:{accent_color};text-align:center;'>🔥 সবচেয়ে বেশি পড়া খবর</h3>", unsafe_allow_html=True)
-    st.markdown(f"<p style='text-align:center;color:{meta_color};'>পাঠকদের পছন্দের শীর্ষ সংবাদ</p>", unsafe_allow_html=True)
-    st.write("---")
-
-    c.execute("""SELECT id,translated_title,image_url,source,date,view_count
-                 FROM news_table ORDER BY view_count DESC, date DESC LIMIT 15""")
-    trending = c.fetchall()
-
-    if trending:
-        for rank, n in enumerate(trending, 1):
-            tc1, tc2 = st.columns([1, 5])
-            with tc1:
-                st.markdown(f"""
-                <div style='text-align:center;background:{accent_color};color:white;
-                     border-radius:50%;width:48px;height:48px;line-height:48px;
-                     font-size:22px;font-weight:900;margin:auto;'>
-                     {eng_to_bn_num(rank)}
-                </div>""", unsafe_allow_html=True)
-            with tc2:
-                views = eng_to_bn_num(n[5] if n[5] else 0)
-                st.markdown(f'<span class="trending-badge">🔥 {views} ভিউ</span>', unsafe_allow_html=True)
-                if st.button(n[1], key=f"trend_{n[0]}", use_container_width=True):
-                    st.session_state.selected_news_id = n[0]
-                    st.session_state.view = 'details'
-                    increment_view(n[0])
+        rc1, rc2, rc3 = st.columns([2, 1, 2])
+        with rc2:
+            st.markdown('<div class="refresh-btn">', unsafe_allow_html=True)
+            if st.button("🔄 নতুন খবর লোড করুন", use_container_width=True, key="home_refresh_btn"):
+                with st.spinner("নতুন খবর আনা হচ্ছে..."):
+                    count = scrape_news()
+                    st.success(f"✅ {count}টি নতুন খবর যোগ হয়েছে!" if count > 0 else "ℹ️ কোনো নতুন খবর নেই।")
                     st.rerun()
-                st.markdown(f"<div class='news-meta'>{n[3]} | {get_bengali_date(n[4])}</div>", unsafe_allow_html=True)
-            st.write("---")
-    else:
-        st.info("এখনো কোনো ট্রেন্ডিং ডেটা নেই। কিছু খবর পড়লে এখানে দেখা যাবে।")
+            st.markdown('</div>', unsafe_allow_html=True)
+        st.write("")
 
-# ==========================================
-# ৪. সেভ করা খবর
-# ==========================================
-elif nav_selection == "🔖 সেভ করা খবর":
-    show_logo()
-    st.markdown(f"<h3 style='color:{text_color};'>🔖 আপনার সেভ করা খবরগুলো</h3>", unsafe_allow_html=True)
-    if st.session_state.bookmarks:
-        placeholders = ','.join(['?'] * len(st.session_state.bookmarks))
-        c.execute(f"SELECT id,translated_title,image_url,source,date,view_count FROM news_table WHERE id IN ({placeholders}) ORDER BY date DESC",
-                  st.session_state.bookmarks)
-        saved_news = c.fetchall()
-        show_news_grid(saved_news)
-    else:
-        st.info("আপনি এখনও কোনো খবর সেভ করেননি। খবর পড়ার সময় 'সেভ করুন' বাটনে ক্লিক করুন।")
+        show_category_buttons()
+        st.write("---")
+
+        cat_title_map = {
+            'General':    "সর্বশেষ আন্তর্জাতিক ও রাজনীতি সংবাদ",
+            'Technology': "সর্বশেষ প্রযুক্তি সংবাদ",
+            'Business':   "সর্বশেষ বাণিজ্য ও মার্কেট সংবাদ",
+            'Science':    "সর্বশেষ বিজ্ঞান সংবাদ",
+            'Sports':     "সর্বশেষ খেলাধুলার সংবাদ",
+            'All':        "সর্বশেষ সকল সংবাদ",
+        }
+        st.markdown(f"<h3 style='color:{text_color};'>{cat_title_map.get(st.session_state.category_filter,'সর্বশেষ সংবাদ')}</h3>", unsafe_allow_html=True)
+
+        if st.session_state.category_filter == 'All':
+            c.execute("SELECT COUNT(*) FROM news_table")
+            total_items = c.fetchone()[0]
+            total_pages = max(1, math.ceil(total_items / items_per_page))
+            offset = (st.session_state.page_num - 1) * items_per_page
+            c.execute("SELECT id,translated_title,image_url,source,date,view_count FROM news_table ORDER BY date DESC LIMIT ? OFFSET ?",
+                      (items_per_page, offset))
+        else:
+            c.execute("SELECT COUNT(*) FROM news_table WHERE category=?", (st.session_state.category_filter,))
+            total_items = c.fetchone()[0]
+            total_pages = max(1, math.ceil(total_items / items_per_page))
+            offset = (st.session_state.page_num - 1) * items_per_page
+            c.execute("SELECT id,translated_title,image_url,source,date,view_count FROM news_table WHERE category=? ORDER BY date DESC LIMIT ? OFFSET ?",
+                      (st.session_state.category_filter, items_per_page, offset))
+        all_news = c.fetchall()
+
+        if all_news:
+            show_news_grid(all_news)
+            if total_pages > 1:
+                st.write("---")
+                pc1, pc2, pc3 = st.columns([1, 2, 1])
+                with pc2:
+                    bc1, tc, bc2 = st.columns([1, 1, 1])
+                    with bc1:
+                        if st.session_state.page_num > 1:
+                            if st.button("⬅️ আগের পাতা", use_container_width=True):
+                                st.session_state.page_num -= 1; st.rerun()
+                    with tc:
+                        st.markdown(f"<div style='text-align:center;margin-top:8px;font-weight:bold;color:{meta_color};'>পৃষ্ঠা {eng_to_bn_num(st.session_state.page_num)} / {eng_to_bn_num(total_pages)}</div>", unsafe_allow_html=True)
+                    with bc2:
+                        if st.session_state.page_num < total_pages:
+                            if st.button("পরের পাতা ➡️", use_container_width=True):
+                                st.session_state.page_num += 1; st.rerun()
+        else:
+            st.info("এই মুহূর্তে কোনো খবর নেই। সাইডবার থেকে 'খবর আপডেট করুন' বাটনে ক্লিক করুন।")
+
+    # ── সার্চ পেইজ ────────────────────────────────────────────────────────
+    elif nav_selection == "🔍 খবর খুঁজুন":
+        show_logo()
+        st.markdown(f"<h3 style='color:{text_color};text-align:center;'>🔍 খবর খুঁজুন</h3>", unsafe_allow_html=True)
+
+        search_input = st.text_input("বাংলা বা ইংরেজিতে কীওয়ার্ড লিখুন...",
+                                      value=st.session_state.search_query,
+                                      placeholder="যেমন: ফিলিস্তিন, AI, cricket...",
+                                      key="search_box", label_visibility="collapsed")
+        sc1, sc2, sc3 = st.columns([2, 1, 2])
+        with sc2:
+            st.markdown('<div class="refresh-btn">', unsafe_allow_html=True)
+            search_clicked = st.button("🔍 খুঁজুন", use_container_width=True, key="search_btn")
+            st.markdown('</div>', unsafe_allow_html=True)
+
+        if search_clicked and search_input.strip():
+            st.session_state.search_query  = search_input.strip()
+            st.session_state.search_active = True
+
+        if st.session_state.search_active and st.session_state.search_query:
+            q = f"%{st.session_state.search_query}%"
+            c.execute("""SELECT id,translated_title,image_url,source,date,view_count
+                         FROM news_table
+                         WHERE translated_title LIKE ? OR title LIKE ?
+                         ORDER BY date DESC LIMIT 30""", (q, q))
+            results = c.fetchall()
+            st.markdown(f"<p style='color:{meta_color};'>'{st.session_state.search_query}' — {eng_to_bn_num(len(results))}টি ফলাফল পাওয়া গেছে</p>", unsafe_allow_html=True)
+            if results:
+                show_news_grid(results)
+            else:
+                st.warning("কোনো ফলাফল পাওয়া যায়নি। অন্য কীওয়ার্ড দিয়ে চেষ্টা করুন।")
+
+    # ── ট্রেন্ডিং পেইজ ───────────────────────────────────────────────────
+    elif nav_selection == "🔥 ট্রেন্ডিং":
+        show_logo()
+        st.markdown(f"<h3 style='color:{accent_color};text-align:center;'>🔥 সবচেয়ে বেশি পড়া খবর</h3>", unsafe_allow_html=True)
+        st.markdown(f"<p style='text-align:center;color:{meta_color};'>পাঠকদের পছন্দের শীর্ষ সংবাদ</p>", unsafe_allow_html=True)
+        st.write("---")
+
+        c.execute("""SELECT id,translated_title,image_url,source,date,view_count
+                     FROM news_table ORDER BY view_count DESC, date DESC LIMIT 15""")
+        trending = c.fetchall()
+
+        if trending:
+            for rank, n in enumerate(trending, 1):
+                tc1, tc2 = st.columns([1, 5])
+                with tc1:
+                    st.markdown(f"""
+                    <div style='text-align:center;background:{accent_color};color:white;
+                         border-radius:50%;width:48px;height:48px;line-height:48px;
+                         font-size:22px;font-weight:900;margin:auto;'>
+                         {eng_to_bn_num(rank)}
+                    </div>""", unsafe_allow_html=True)
+                with tc2:
+                    views = eng_to_bn_num(n[5] if n[5] else 0)
+                    st.markdown(f'<span class="trending-badge">🔥 {views} ভিউ</span>', unsafe_allow_html=True)
+                    if st.button(n[1], key=f"trend_{n[0]}", use_container_width=True):
+                        st.session_state.selected_news_id = n[0]
+                        st.session_state.view = 'details'
+                        increment_view(n[0])
+                        st.rerun()
+                    st.markdown(f"<div class='news-meta'>{n[3]} | {get_bengali_date(n[4])}</div>", unsafe_allow_html=True)
+                st.write("---")
+        else:
+            st.info("এখনো কোনো ট্রেন্ডিং ডেটা নেই। কিছু খবর পড়লে এখানে দেখা যাবে।")
+
+    # ── সেভ করা খবর ──────────────────────────────────────────────────────
+    elif nav_selection == "🔖 সেভ করা খবর":
+        show_logo()
+        st.markdown(f"<h3 style='color:{text_color};'>🔖 আপনার সেভ করা খবরগুলো</h3>", unsafe_allow_html=True)
+        if st.session_state.bookmarks:
+            placeholders = ','.join(['?'] * len(st.session_state.bookmarks))
+            c.execute(f"SELECT id,translated_title,image_url,source,date,view_count FROM news_table WHERE id IN ({placeholders}) ORDER BY date DESC",
+                      st.session_state.bookmarks)
+            saved_news = c.fetchall()
+            show_news_grid(saved_news)
+        else:
+            st.info("আপনি এখনও কোনো খবর সেভ করেননি। খবর পড়ার সময় 'সেভ করুন' বাটনে ক্লিক করুন।")
 
 
 # ==========================================
