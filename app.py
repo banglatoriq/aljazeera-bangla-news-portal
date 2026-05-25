@@ -409,7 +409,7 @@ check_for_auto_update()
 # সাইডবার নেভিগেশন
 # ==========================================
 st.sidebar.markdown("<h2 style='text-align: center; color: #D35400;'>মেনু</h2>", unsafe_allow_html=True)
-nav_selection = st.sidebar.radio("", ["🏠 হোম পেজ", "🔖 সেভ করা খবর"])
+nav_selection = st.sidebar.radio("নেভিগেশন", ["🏠 হোম পেজ", "🔖 সেভ করা খবর"], label_visibility="collapsed")
 st.sidebar.markdown("---")
 
 if st.sidebar.button("🔄 খবর আপডেট করুন"):
